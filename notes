@@ -1,0 +1,15 @@
+## to do
+pseudo-code:
+
+set up input parameters  
+read metadata  
+read images for nucleus, FISH, IF  
+identify and filter for nucleus  
+identify FISH spot within a given nucleus  
+generate random spots in same nucleus    
+measure IF intensity - support multiple IF channels  
+output standard excel files  
+output images of called FISH foci with IF channels  
+output 2D contour graphs  
+output 3D contour graphs  
+
