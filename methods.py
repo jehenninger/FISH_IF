@@ -21,8 +21,9 @@ def parse_arguments(parser):
     # optional arguments
     parser.add_argument("--o", type=str)
     parser.add_argument("--tm", type=float, default=3.0)
-    parser.add_argument("--min_a", type=float, default=500)  # number of voxels
-    parser.add_argument("--max_a", type=float, default=3000)  # number of voxels
+    parser.add_argument("--min_a", type=float, default=1000)  # number of voxels
+    parser.add_argument("--max_a", type=float, default=10000)  # number of voxels
+    parser.add_argument("--c", type=float, default=0.7)  # circularity threshold
 
     parser.add_argument("--manual", dest="autocall_flag", action="store_false", default=True)
 
@@ -199,7 +200,7 @@ def find_fish_spot(image, input_params):
     fish_mask[np.where(image > threshold)] = True
 
     fish_binary = nd.morphology.binary_fill_holes(fish_mask)
-    # fish_binary = nd.binary_erosion(fish_binary)
+    fish_binary = nd.binary_erosion(fish_binary)
     # fish_binary = nd.binary_erosion(fish_binary)
     # fish_binary = nd.binary_erosion(fish_binary)
     # fish_binary = nd.binary_erosion(fish_binary)
@@ -245,8 +246,6 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
         # spot = fish_image[region]
         spot_mask = fish_mask[region]
 
-        # find circularity of max projection 
-
         # slice_of_max_z = np.argmax(spot, axis=0)
         # test_spot = spot[slice_of_max_z, :, :]
 
@@ -255,27 +254,36 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
 
         num_of_pixels_in_fish_region = np.sum(spot_mask)
 
-        if nuclear_mask[test_spot_center_r, test_spot_center_c]:  # makes sure that FISH center is in nucleus. Should be True if true.
-            if input_params.min_a <= num_of_pixels_in_fish_region <= input_params.max_a:  # makes sure that FISH spot fits size criteria
+        if nuclear_mask[test_spot_center_r, test_spot_center_c] and\
+                input_params.min_a <= num_of_pixels_in_fish_region <= input_params.max_a:
+            circularity = get_circularity_of_3D_spot(spot_mask)
+
+            if circularity >= input_params.c:  # tests that spot is in nucleus, fits size and circularity threshold
+
                 fish_spots_to_keep[idx] = True
                 fish_spot_total_pixels.append(num_of_pixels_in_fish_region)
+            else:
+                fish_mask[fish_regions[idx]] = False
         else:
-            fish_mask[fish_regions[idx]] = 0
+            fish_mask[fish_regions[idx]] = False
 
     # fish_centers = list(compress(fish_centers,fish_spots_to_keep))
     fish_regions = list(compress(fish_regions, fish_spots_to_keep))
 
     return fish_regions, fish_mask, fish_spot_total_pixels
 
+
 def max_project(image):
     projection = np.max(image, axis=0)
 
     return projection
 
+
 def get_file_extension(file_path):
     file_ext = os.path.splitext(file_path)
 
     return file_ext[1]  # because splitext returns a tuple, and the extension is the second element
+
 
 def find_image_channel_name(file_name):
     str_idx = file_name.find('Conf ')  # this is specific to our microscopes file name format
@@ -283,11 +291,32 @@ def find_image_channel_name(file_name):
 
     return channel_name
 
+
 def get_sample_name(nd_file_name):
     sample_name, ext = os.path.splitext(nd_file_name)
 
     return sample_name
 
+
 def clear_axis_ticks(ax):
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
+
+def get_circularity_of_3D_spot(spot_mask):
+    # find circularity of max projection
+    spot_mask_max = max_project(spot_mask)
+    spot_mask_label, num_of_objects = nd.label(spot_mask_max)
+    spot_mask_region = measure.regionprops(spot_mask_label)
+
+    if num_of_objects == 1:
+        circularity = circ(spot_mask_region[0])
+    else:
+        circularity = -1
+
+    return circularity
+
+
+def circ(region):
+    circularity = (4 * math.pi * region.area) / (region.perimeter * region.perimeter)
+
+    return circularity
