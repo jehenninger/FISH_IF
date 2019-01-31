@@ -1,14 +1,16 @@
 import argparse
 import os
+import sys
 import imageio as io
 from matplotlib import pyplot as plt
 from scipy import ndimage as nd
 import numpy as np
 import pandas as pd
-from skimage import img_as_float, img_as_uint, morphology, measure
+from skimage import img_as_float, img_as_uint, morphology, measure, color
 from sklearn.cluster import KMeans
 from datetime import datetime
 import math
+from itertools import compress
 
 def parse_arguments(parser):
 
@@ -19,8 +21,8 @@ def parse_arguments(parser):
     # optional arguments
     parser.add_argument("--o", type=str)
     parser.add_argument("--tm", type=float, default=3.0)
-    parser.add_argument("--min_a", type=float, default=50)  # number of voxels
-    parser.add_argument("--max_a", type=float, default=1000)  # number of voxels
+    parser.add_argument("--min_a", type=float, default=500)  # number of voxels
+    parser.add_argument("--max_a", type=float, default=3000)  # number of voxels
 
     parser.add_argument("--manual", dest="autocall_flag", action="store_false", default=True)
 
@@ -34,43 +36,97 @@ def analyze_replicate(replicate_files, input_params, parent_dir):
     if (len(replicate_files) - 2) > 1:  # we subtract 2 here to account for the required DAPI and FISH channels
         input_params.multiple_IF_flag = True
 
-    # get nuclear mask
-    nucleus_image_file = [f for f in replicate_files if '405 DAPI' in f]
+    # get replicate sample name
+    nd_file_name = [n for n in replicate_files if '.nd' in n]
+    if len(nd_file_name) == 1:
+        sample_name = get_sample_name(nd_file_name[0])
+    else:
+        print('Error: Found too many .nd files in sample directory')
+        sys.exit(0)
+
+    print(sample_name)
+
+    # load images
+    nucleus_image_file = [f for f in replicate_files if all(['405 DAPI' in f, get_file_extension(f) == '.TIF'])]
+    if len(nucleus_image_file) < 1:
+        print('Error: Could not find nucleus image file')
+        sys.exit(0)
+
     nucleus_image_path = os.path.join(input_params.parent_dir, parent_dir, nucleus_image_file[0])
+    nucleus_image = io.volread(nucleus_image_path)  # image is [z, x, y] array
 
-    nuclear_coords_r = []
-    nuclear_coords_c = []
-    nuclear_regions, nuclear_mask = find_nucleus(nucleus_image_path, input_params)
-    # for idx, region in enumerate(nuclear_regions):
-    #     nuclear_coords_r.append(region.coords[idx][0])  # for some reason, region.coords is a nested list
-    #     nuclear_coords_c.append(region.coords[idx][1])  # JON THIS IS WRONG ANYWAY
+    fish_image_file = [s for s in replicate_files if input_params.fish_channel in s and get_file_extension(s) == '.TIF']
+    if len(fish_image_file) < 1:
+        print('Error: Could not find fish image file')
+        sys.exit(0)
 
-    # get FISH spot
-    fish_image_file = [s for s in replicate_files if input_params.fish_channel in s]
     fish_image_path = os.path.join(input_params.parent_dir, parent_dir, fish_image_file[0])
+    fish_image = io.volread(fish_image_path)
 
-    fish_centers, fish_spots, fish_mask = find_fish_spot(fish_image_path, input_params)
+    protein_image_files = [p for p in replicate_files if
+                           all(['405 DAPI' not in p,
+                                input_params.fish_channel not in p,
+                                get_file_extension(p) == '.TIF'])]
+    if len(protein_image_files) < 1:
+        print('Error: Could not find protein image files')
+        sys.exit(0)
 
+    protein_image_paths = []
+    protein_images = []
+    protein_channel_names = []
+    for idx, p in enumerate(protein_image_files):
+        protein_image_paths.append(os.path.join(input_params.parent_dir, parent_dir, p))
+        protein_channel_names.append(find_image_channel_name(p))
+        protein_images.append(io.volread(protein_image_paths[idx]))
+
+    # get nuclear mask
+    nuclear_regions, nuclear_mask = find_nucleus(nucleus_image, input_params)
+
+    # get FISH spots
+    fish_spots, fish_mask = find_fish_spot(fish_image, input_params)
+
+    fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
     # filter FISH spots by nuclear localization and size
-    fish_centers, fish_spots, fish_mask_new = filter_fish_spots(fish_centers, fish_spots, fish_mask,
-                                                                nuclear_mask, input_params)
-    # @Debug
+    fish_spots, fish_mask_new, fish_spot_total_pixels = filter_fish_spots(fish_spots, fish_image,
+                                                                      fish_mask, nuclear_mask, input_params)
+    fish_mask_new_int = fish_mask_new*1  # because matplotlib doesn't like bools?
+   # @Debug
     if True:
-        fig, ax = plt.subplots(1, 2)
+        # for i in range(0, fish_image.shape[0]):
+        #     fig, ax = plt.subplots(1, 4)
+        #     ax[0].imshow(nucleus_image[i,:,:], cmap='gray')
+        #     ax[1].imshow(fish_image[i,:,:], cmap='gray')
+        #     image_label_overlay = color.label2rgb(fish_binary_labeled[i,:,:], fish_image[i,:,:], bg_label=0)
+        #     ax[2].imshow(image_label_overlay)
+        #     ax[3].imshow(new_binary[i,:,:], cmap='gray')
+        #     # ax[4].imshow(fish_mask_new[i,:,:], cmap='gray')
+        #
+        #     for x in ax:
+        #         clear_axis_ticks(x)
+        #
+        #     plt.suptitle(sample_name, fontsize=4)
+        #     plt.savefig(os.path.join(input_params.parent_dir, sample_name + "_" + str(i) + "_fish_mask.png"), dpi=300)
+        #
+        #     plt.close()
 
-        ax[0].imshow(fish_mask[15,:,:], cmap='gray')
-        ax[1].imshow(fish_mask_new[15,:,:], cmap='gray')
+        fig, ax = plt.subplots(1, 4)
+        ax[0].imshow(max_project(nucleus_image), cmap='gray')
+        ax[1].imshow(max_project(fish_image), cmap='gray')
+        ax[2].imshow(max_project(fish_mask_int), cmap='gray')
+        ax[3].imshow(max_project(fish_mask_new_int), cmap='gray')
 
-        plt.savefig(os.path.join(input_params.parent_dir, str(datetime.now()) +  "_fish_mask.png"), dpi=300)
+        for x in ax:
+            clear_axis_ticks(x)
+
+        plt.title(sample_name)
+        plt.savefig(os.path.join(input_params.parent_dir, sample_name +  "_fish_mask.png"), dpi=300)
 
         plt.close()
 
 
-def find_nucleus(image_path, input_params):
-
-    image = io.volread(image_path)  # image is [z, x, y] array
+def find_nucleus(image, input_params):
     image = nd.gaussian_filter(image, sigma=2.0)
-    image = np.max(image, axis=0)  # max project the image because we just care about finding nuclei
+    image = max_project(image)  # max project the image because we just care about finding nuclei
     image = img_as_float(image)
     # threshold_multiplier = 0.25
 
@@ -86,9 +142,11 @@ def find_nucleus(image_path, input_params):
     nuclear_cluster = np.argmax(cluster_mean)
 
     clusters = np.reshape(clusters, newshape=image.shape)
-    nuclear_mask = np.zeros(image.shape)
+    nuclear_mask = np.full(shape=image.shape, fill_value=False, dtype=bool)
+    nuclear_mask[clusters == nuclear_cluster] = True
 
-    nuclear_mask[clusters == nuclear_cluster] = 1
+    # nuclear_mask = np.zeros(image.shape)  # @Deprecated
+    # nuclear_mask[clusters == nuclear_cluster] = 1 @Deprecated
 
     # # simple thresholding
     # mean_intensity = np.mean(image)
@@ -124,14 +182,12 @@ def find_nucleus(image_path, input_params):
 
     return nuclear_regions, nuclear_mask
 
-def find_fish_spot(image_path, input_params):
-
-    image = io.volread(image_path)  # image is [z, x, y] array
+def find_fish_spot(image, input_params):
     image = nd.gaussian_filter(image, sigma=2.0)
     # image = img_as_float(image)
     threshold_multiplier = input_params.tm
 
-    fish_mask = np.zeros(image.shape)
+    fish_mask = np.full(shape=image.shape, fill_value=False, dtype=bool)
 
     # simple thresholding
     mean_intensity = np.mean(image)/65536
@@ -139,7 +195,8 @@ def find_fish_spot(image_path, input_params):
 
     image = img_as_float(image)
     threshold = mean_intensity + (std_intensity * threshold_multiplier)
-    fish_mask[image > threshold] = 1
+    # fish_mask[image > threshold] = True
+    fish_mask[np.where(image > threshold)] = True
 
     fish_binary = nd.morphology.binary_fill_holes(fish_mask)
     # fish_binary = nd.binary_erosion(fish_binary)
@@ -152,49 +209,85 @@ def find_fish_spot(image_path, input_params):
 
     fish_regions = nd.find_objects(fish_binary_labeled)
 
-    fish_centers = []
-    for region in fish_regions:
-        z = math.floor((region[0].stop - region[0].start) / 2)
-        r = math.floor((region[1].stop - region[0].start) / 2)
-        c = math.floor((region[2].stop - region[2].start) / 2)
-        fish_centers.append([z, r, c])
+    # fish_centers = []
+    # for region in fish_regions:
+    #     z = math.floor((region[0].stop - region[0].start) / 2)
+    #     r = math.floor((region[1].stop - region[0].start) / 2)
+    #     c = math.floor((region[2].stop - region[2].start) / 2)
+    #     fish_centers.append([z, r, c])
 
     #fish_centers = nd.center_of_mass(fish_binary_labeled)
 
     # @Debug
     if False:
-        fig, ax = plt.subplots(1, 2)
+        for i in range(0, image.shape[1]):
+            fig, ax = plt.subplots(1, 2)
 
-        ax[0].imshow(image[15,:,:], cmap='gray')
-        ax[1].imshow(fish_binary[15,:,:], cmap='gray')
+            ax[0].imshow(image[i,:,:], cmap='gray')
+            image_label_overlay = color.label2rgb(fish_binary_labeled[i, : ,:], image[i,:,:])
 
-        plt.savefig(os.path.join(input_params.parent_dir, str(datetime.now()) +  "_fish_test.png"), dpi=300)
+            ax[1].imshow(image_label_overlay)
 
-        plt.close()
+            plt.savefig(os.path.join(input_params.parent_dir, str(datetime.now()) +str(i) +  "_fish_test.png"), dpi=300)
 
-    return fish_centers, fish_regions, fish_mask
+            plt.close()
+
+    return fish_regions, fish_binary
 
 
-def filter_fish_spots(fish_centers, fish_regions, fish_mask, nuclear_mask, input_params):
+def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_params):
     # fish_spots_to_keep = [False] * len(fish_regions) # @Deprecated
-    fish_spots_to_keep = np.zeros(len(fish_regions), dtype=bool)
-    for idx, center in enumerate(fish_centers):
-        fish_z = fish_regions[idx][0]
-        fish_r = fish_regions[idx][1]
-        fish_c = fish_regions[idx][2]
+    # fish_spots_to_keep = np.zeros(len(fish_regions), dtype=bool) @Deprecated
+    fish_spots_to_keep = np.full(shape=(len(fish_regions), 1), fill_value=False, dtype=bool)
+    fish_spot_total_pixels = []
 
-        # @ JON TO DO : Should probably calculate volume of the paralelloid here instead of the way I am doing it
-        num_of_pixels_in_fish_region = (abs(fish_z.stop - fish_z.start) *
-                                        abs(fish_r.stop - fish_r.start) *
-                                        abs(fish_c.stop - fish_c.start))  # total number of pixels in bounding box
+    for idx, region in enumerate(fish_regions):
+        # spot = fish_image[region]
+        spot_mask = fish_mask[region]
 
-        if nuclear_mask[center[1], center[2]] == 1:  # makes sure that FISH center is in nucleus. Should be True if true.
+        # find circularity of max projection 
+
+        # slice_of_max_z = np.argmax(spot, axis=0)
+        # test_spot = spot[slice_of_max_z, :, :]
+
+        test_spot_center_r = int(math.floor((region[1].start + region[1].stop)/2))
+        test_spot_center_c = int(math.floor((region[2].start + region[2].stop)/2))
+
+        num_of_pixels_in_fish_region = np.sum(spot_mask)
+
+        if nuclear_mask[test_spot_center_r, test_spot_center_c]:  # makes sure that FISH center is in nucleus. Should be True if true.
             if input_params.min_a <= num_of_pixels_in_fish_region <= input_params.max_a:  # makes sure that FISH spot fits size criteria
                 fish_spots_to_keep[idx] = True
+                fish_spot_total_pixels.append(num_of_pixels_in_fish_region)
         else:
-            fish_mask[fish_z, fish_r, fish_c] = False
+            fish_mask[fish_regions[idx]] = 0
 
-    fish_centers = fish_centers[fish_spots_to_keep]  # @ JON START HERE: Need to re-think if fish_centers should be numpy array, because this line won't work as is.
-    fish_regions = fish_regions[fish_spots_to_keep]
+    # fish_centers = list(compress(fish_centers,fish_spots_to_keep))
+    fish_regions = list(compress(fish_regions, fish_spots_to_keep))
 
-    return fish_centers, fish_regions, fish_mask
+    return fish_regions, fish_mask, fish_spot_total_pixels
+
+def max_project(image):
+    projection = np.max(image, axis=0)
+
+    return projection
+
+def get_file_extension(file_path):
+    file_ext = os.path.splitext(file_path)
+
+    return file_ext[1]  # because splitext returns a tuple, and the extension is the second element
+
+def find_image_channel_name(file_name):
+    str_idx = file_name.find('Conf ')  # this is specific to our microscopes file name format
+    channel_name = file_name[str_idx + 5 : str_idx + 8]
+
+    return channel_name
+
+def get_sample_name(nd_file_name):
+    sample_name, ext = os.path.splitext(nd_file_name)
+
+    return sample_name
+
+def clear_axis_ticks(ax):
+    ax.get_xaxis().set_ticks([])
+    ax.get_yaxis().set_ticks([])
