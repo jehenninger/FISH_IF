@@ -1,6 +1,8 @@
 import methods
 import grapher
 
+import matplotlib
+matplotlib.use('Agg')
 import numpy as np
 import pandas as pd
 import os
@@ -29,17 +31,19 @@ dir_list = os.listdir(input_params.parent_dir)
 file_ext = ".nd"
 
 for folder in dir_list:
-    if not folder.startswith('.'):  # to not include hidden files or folders
-        file_list = os.listdir(os.path.join(input_params.parent_dir, folder))
-        base_name_files = [f for f in file_list if file_ext in f
-                           and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
-        base_name_files.sort(reverse=False)
-        for file in base_name_files:
-            sample_name = file.replace(file_ext, '')
-            replicate_files = [r for r in file_list if sample_name in r
-                               and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
+    if not folder.startswith('.') and \
+            os.path.isdir(os.path.join(input_params.parent_dir, folder)):  # to not include hidden files or folders
 
-            methods.analyze_replicate(replicate_files, input_params, folder)
+            file_list = os.listdir(os.path.join(input_params.parent_dir, folder))
+            base_name_files = [f for f in file_list if file_ext in f
+                               and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
+            base_name_files.sort(reverse=False)
+            for file in base_name_files:
+                sample_name = file.replace(file_ext, '')
+                replicate_files = [r for r in file_list if sample_name in r
+                                   and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
+
+                methods.analyze_replicate(replicate_files, input_params, folder)
 
 
 # generate output folders

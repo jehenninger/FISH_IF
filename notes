@@ -13,3 +13,6 @@ output images of called FISH foci with IF channels
 output 2D contour graphs  
 output 3D contour graphs  
 
+## improvements
+Better nuclear distinction. Like for touching nuclei.
+
