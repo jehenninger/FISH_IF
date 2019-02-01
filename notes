@@ -15,5 +15,7 @@ output 2D contour graphs
 output 3D contour graphs  
 
 ## improvements
-Better nuclear distinction. Like for touching nuclei.
+Better nuclear distinction. Like for touching nuclei.  
+Maybe have separate function to quickly test different thresholds to see what works?  
+
 

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import os
 import sys
-
+from types import SimpleNamespace
 import argparse
 import json
 from datetime import datetime
@@ -37,13 +37,16 @@ output_dirs = methods.make_output_directories(input_params)
 
 # get number of experiments/sub-directories to analyze
 dir_list = os.listdir(input_params.parent_dir)
+dir_list.sort(reverse=False)
 file_ext = ".nd"
 
 replicate_writer = pd.ExcelWriter(os.path.join(output_dirs['individual'], 'individual_spot_output.xlsx'),
                                   engine='xlsxwriter')
-individual_replicate_output = pd.DataFrame()
 
-for folder in dir_list:
+data = []
+
+data_count = 0
+for folder in dir_list:  # folder is a separate experiment
     if not folder.startswith('.') and \
             os.path.isdir(os.path.join(input_params.parent_dir, folder)):  # to not include hidden files or folders
 
@@ -52,21 +55,29 @@ for folder in dir_list:
                                and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
             base_name_files.sort(reverse=False)
 
-            count = 0
             individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity'])
-            for file in base_name_files:
+
+            replicate_data_idx = []
+            for file in base_name_files:  # file is the nd file associated with a group of images for a replicate
                 sample_name = file.replace(file_ext, '')
                 replicate_files = [r for r in file_list if sample_name in r
                                    and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
 
-                temp_individual_replicate_output =  methods.analyze_replicate(replicate_files, input_params, folder, individual_replicate_output)
+                temp_data = methods.load_images(replicate_files, input_params, folder)
+                data.append(temp_data)
+
+                temp_individual_replicate_output, data[data_count] =  methods.analyze_replicate(data[data_count], input_params, folder)
 
                 individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
 
+                replicate_data_idx.append(data_count)
+                data_count += 1
+
+
             individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
+
+            random_output = methods.generate_random_data(data[slice(min(replicate_data_idx), max(replicate_data_idx))], input_params)
+
 
 replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
 replicate_writer.save()
-
-# @ JON start here: There is a bug where the channels are output twice per replicate for some reason?
-# Also Excel complains that the channels are actually numbers

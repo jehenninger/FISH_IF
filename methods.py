@@ -11,6 +11,7 @@ from sklearn.cluster import KMeans
 from datetime import datetime
 import math
 from itertools import compress
+from types import SimpleNamespace
 
 def parse_arguments(parser):
 
@@ -33,7 +34,8 @@ def parse_arguments(parser):
     return input_params
 
 
-def analyze_replicate(replicate_files, input_params, parent_dir, individual_replicate_output):
+def load_images(replicate_files, input_params, parent_dir):
+    data = SimpleNamespace()  # this is the session data object that will be passed to functions
 
     if (len(replicate_files) - 2) > 1:  # we subtract 2 here to account for the required DAPI and FISH channels
         input_params.multiple_IF_flag = True
@@ -42,6 +44,7 @@ def analyze_replicate(replicate_files, input_params, parent_dir, individual_repl
     nd_file_name = [n for n in replicate_files if '.nd' in n]
     if len(nd_file_name) == 1:
         sample_name = get_sample_name(nd_file_name[0])
+        data.sample_name = sample_name
     else:
         print('Error: Found too many .nd files in sample directory')
         sys.exit(0)
@@ -56,6 +59,7 @@ def analyze_replicate(replicate_files, input_params, parent_dir, individual_repl
 
     nucleus_image_path = os.path.join(input_params.parent_dir, parent_dir, nucleus_image_file[0])
     nucleus_image = io.volread(nucleus_image_path)  # image is [z, x, y] array
+    data.nucleus_image = nucleus_image
 
     fish_image_file = [s for s in replicate_files if input_params.fish_channel in s and get_file_extension(s) == '.TIF']
     if len(fish_image_file) < 1:
@@ -64,6 +68,7 @@ def analyze_replicate(replicate_files, input_params, parent_dir, individual_repl
 
     fish_image_path = os.path.join(input_params.parent_dir, parent_dir, fish_image_file[0])
     fish_image = io.volread(fish_image_path)
+    data.fish_image = fish_image
 
     protein_image_files = [p for p in replicate_files if
                            all(['405 DAPI' not in p,
@@ -81,67 +86,57 @@ def analyze_replicate(replicate_files, input_params, parent_dir, individual_repl
         protein_channel_names.append(find_image_channel_name(p))
         protein_images.append(io.volread(protein_image_paths[idx]))
 
+    data.protein_images = protein_images
+    data.protein_channel_names = protein_channel_names
+
+    return data
+
+
+def analyze_replicate(data, input_params, parent_dir):
+
     # get nuclear mask
-    nuclear_regions, nuclear_mask = find_nucleus(nucleus_image, input_params)
+    nuclear_regions, nuclear_mask, nuclear_binary_labeled = find_nucleus(data.nucleus_image, input_params)
 
     # get FISH spots
-    fish_spots, fish_mask = find_fish_spot(fish_image, input_params)
+    fish_spots, fish_mask = find_fish_spot(data.fish_image, input_params)
     fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
 
     # filter FISH spots by nuclear localization and size
-    fish_spots, fish_mask_filt, fish_spot_total_pixels, fish_rc_centers = filter_fish_spots(fish_spots, fish_image,
-                                                                      fish_mask, nuclear_mask, input_params)
+    fish_spots_filt, fish_mask_filt, fish_spot_total_pixels, fish_rc_centers, nucleus_with_fish_spot = filter_fish_spots(fish_spots, data.fish_image,
+                                                                      fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
     fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
 
+
     # measure IF channels
-    for idx, image in enumerate(protein_images):
-        for s, spot in enumerate(fish_spots):
+    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity'])
+
+    for idx, image in enumerate(data.protein_images):
+        for s, spot in enumerate(fish_spots_filt):
             mean_intensity = np.mean(image[spot])
 
-            individual_replicate_output = individual_replicate_output.append({'sample': sample_name, 'spot_id': s,
-                                                                              'IF_channel' : protein_channel_names[idx],
+            individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                              'IF_channel' : int(data.protein_channel_names[idx]),
                                                                               'mean_intensity' : mean_intensity},
                                                                              ignore_index=True)
+    data.nuclear_regions = nuclear_regions
+    data.nuclear_mask = nuclear_mask
+    data.nuclear_binary_labeled = nuclear_binary_labeled
+    data.fish_spots = fish_spots_filt
+    data.fish_mask = fish_mask_filt
+    data.fish_rc_centers = fish_rc_centers
+
+    return individual_replicate_output, data
 
 
+def generate_random_data(data, input_params):
 
-    # get 10 random regions from nucleus of FISH spot. @Improve Some nuclei are stuck together
-    mean_z_depth = find_average_fish_spot_depth(fish_spots)
+    # data is a list of the data structures for a given experiment
 
-    return individual_replicate_output
+    # @Improve Some nuclei are stuck together
 
-   # @Debug
-    if False:
-        # for i in range(0, fish_image.shape[0]):
-        #     fig, ax = plt.subplots(1, 4)
-        #     ax[0].imshow(nucleus_image[i,:,:], cmap='gray')
-        #     ax[1].imshow(fish_image[i,:,:], cmap='gray')
-        #     image_label_overlay = color.label2rgb(fish_binary_labeled[i,:,:], fish_image[i,:,:], bg_label=0)
-        #     ax[2].imshow(image_label_overlay)
-        #     ax[3].imshow(new_binary[i,:,:], cmap='gray')
-        #     # ax[4].imshow(fish_mask_new[i,:,:], cmap='gray')
-        #
-        #     for x in ax:
-        #         clear_axis_ticks(x)
-        #
-        #     plt.suptitle(sample_name, fontsize=4)
-        #     plt.savefig(os.path.join(input_params.parent_dir, sample_name + "_" + str(i) + "_fish_mask.png"), dpi=300)
-        #
-        #     plt.close()
+    mean_z_depth = find_average_fish_spot_depth(data.fish_spots)
 
-        fig, ax = plt.subplots(1, 4)
-        ax[0].imshow(max_project(nucleus_image), cmap='gray')
-        ax[1].imshow(max_project(fish_image), cmap='gray')
-        ax[2].imshow(max_project(fish_mask_int), cmap='gray')
-        ax[3].imshow(max_project(fish_mask_new_int), cmap='gray')
 
-        for x in ax:
-            clear_axis_ticks(x)
-
-        plt.title(sample_name)
-        plt.savefig(os.path.join(input_params.parent_dir, sample_name +  "_fish_mask.png"), dpi=300)
-
-        plt.close()
 
 
 def find_nucleus(image, input_params):
@@ -189,18 +184,7 @@ def find_nucleus(image, input_params):
     nuclear_regions = measure.regionprops(nuclear_binary_labeled)
     # nuclear_regions = nd.find_objects(nuclear_binary_labeled) # @Deprecated
 
-    # @Debug
-    if False:
-        fig, ax = plt.subplots(1, 2)
-
-        ax[0].imshow(image, cmap='gray')
-        ax[1].imshow(nuclear_binary, cmap='gray')
-
-        plt.savefig(os.path.join(input_params.parent_dir, str(datetime.now()) +  "_test.png"), dpi=300)
-
-        plt.close()
-
-    return nuclear_regions, nuclear_mask
+    return nuclear_regions, nuclear_mask, nuclear_binary_labeled
 
 def find_fish_spot(image, input_params):
     image = nd.gaussian_filter(image, sigma=2.0)
@@ -238,28 +222,15 @@ def find_fish_spot(image, input_params):
 
     #fish_centers = nd.center_of_mass(fish_binary_labeled)
 
-    # @Debug
-    if False:
-        for i in range(0, image.shape[1]):
-            fig, ax = plt.subplots(1, 2)
-
-            ax[0].imshow(image[i,:,:], cmap='gray')
-            image_label_overlay = color.label2rgb(fish_binary_labeled[i, : ,:], image[i,:,:])
-
-            ax[1].imshow(image_label_overlay)
-
-            plt.savefig(os.path.join(input_params.parent_dir, str(datetime.now()) +str(i) +  "_fish_test.png"), dpi=300)
-
-            plt.close()
-
     return fish_regions, fish_binary
 
 
-def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_params):
+def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear_binary_labeled, input_params):
     # fish_spots_to_keep = [False] * len(fish_regions) # @Deprecated
     # fish_spots_to_keep = np.zeros(len(fish_regions), dtype=bool) @Deprecated
     fish_spots_to_keep = np.full(shape=(len(fish_regions), 1), fill_value=False, dtype=bool)
     fish_spot_total_pixels = []
+    nucleus_with_fish_spot = []
 
     fish_rc_centers = []
 
@@ -284,6 +255,9 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
 
                 fish_spots_to_keep[idx] = True
                 fish_spot_total_pixels.append(num_of_pixels_in_fish_region)
+
+                nucleus_with_fish_spot.append(nuclear_binary_labeled[test_spot_center_r, test_spot_center_c])
+
             else:
                 fish_mask[fish_regions[idx]] = False
         else:
@@ -292,7 +266,10 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
     # fish_centers = list(compress(fish_centers,fish_spots_to_keep))
     fish_regions = list(compress(fish_regions, fish_spots_to_keep))
 
-    return fish_regions, fish_mask, fish_spot_total_pixels, fish_rc_centers
+    print("Number of FISH spots after filtering: ", len(fish_regions))
+    print()
+
+    return fish_regions, fish_mask, fish_spot_total_pixels, fish_rc_centers, nucleus_with_fish_spot
 
 
 def max_project(image):
@@ -345,7 +322,6 @@ def circ(region):
 
 
 def find_average_fish_spot_depth(fish_spots):
-
     z = []
     for region in fish_spots:
         z.append(int(math.floor((region[0].start + region[0].stop)/2)))
@@ -357,9 +333,9 @@ def find_average_fish_spot_depth(fish_spots):
 def make_output_directories(input_params):
 
     if input_params.o:
-        output_parent_dir = os.path.join(input_params.parent_dir, input_params.o)
+        output_parent_dir = os.path.join(os.path.dirname(input_params.parent_dir), input_params.o)
     else:
-        output_parent_dir = os.path.join(input_params.parent_dir, 'output')
+        output_parent_dir = os.path.join(os.path.dirname(input_params.parent_dir), 'output')
 
     output_dirs = {'parent': output_parent_dir,
                    'individual': os.path.join(output_parent_dir, 'individual'),
@@ -373,8 +349,7 @@ def make_output_directories(input_params):
     for key, folder in output_dirs.items():
         if key is not 'output_parent':
             if not os.path.isdir(folder):
-                if not os.path.isdir(os.path.dirname(
-                        folder)):  # so I guess .items() is random order of dictionary keys. So when making subfolders, if the parent doesn't exist, then we would get an error. This accounts for that.
+                if not os.path.isdir(os.path.dirname(folder)):  # so I guess .items() is random order of dictionary keys. So when making subfolders, if the parent doesn't exist, then we would get an error. This accounts for that.
                     os.mkdir(os.path.dirname(folder))
 
                 os.mkdir(folder)
