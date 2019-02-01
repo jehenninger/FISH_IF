@@ -7,3 +7,4 @@
 *.TIF
 **/venv
 *.png
+*.xlsx

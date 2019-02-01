@@ -24,6 +24,7 @@ def parse_arguments(parser):
     parser.add_argument("--min_a", type=float, default=1000)  # number of voxels
     parser.add_argument("--max_a", type=float, default=10000)  # number of voxels
     parser.add_argument("--c", type=float, default=0.7)  # circularity threshold
+    parser.add_argument("--b", type=float, default=5)  # box edge length for graphing and quantification
 
     parser.add_argument("--manual", dest="autocall_flag", action="store_false", default=True)
 
@@ -32,7 +33,7 @@ def parse_arguments(parser):
     return input_params
 
 
-def analyze_replicate(replicate_files, input_params, parent_dir):
+def analyze_replicate(replicate_files, input_params, parent_dir, individual_replicate_output):
 
     if (len(replicate_files) - 2) > 1:  # we subtract 2 here to account for the required DAPI and FISH channels
         input_params.multiple_IF_flag = True
@@ -85,14 +86,32 @@ def analyze_replicate(replicate_files, input_params, parent_dir):
 
     # get FISH spots
     fish_spots, fish_mask = find_fish_spot(fish_image, input_params)
-
     fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
+
     # filter FISH spots by nuclear localization and size
-    fish_spots, fish_mask_new, fish_spot_total_pixels = filter_fish_spots(fish_spots, fish_image,
+    fish_spots, fish_mask_filt, fish_spot_total_pixels, fish_rc_centers = filter_fish_spots(fish_spots, fish_image,
                                                                       fish_mask, nuclear_mask, input_params)
-    fish_mask_new_int = fish_mask_new*1  # because matplotlib doesn't like bools?
+    fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
+
+    # measure IF channels
+    for idx, image in enumerate(protein_images):
+        for s, spot in enumerate(fish_spots):
+            mean_intensity = np.mean(image[spot])
+
+            individual_replicate_output = individual_replicate_output.append({'sample': sample_name, 'spot_id': s,
+                                                                              'IF_channel' : protein_channel_names[idx],
+                                                                              'mean_intensity' : mean_intensity},
+                                                                             ignore_index=True)
+
+
+
+    # get 10 random regions from nucleus of FISH spot. @Improve Some nuclei are stuck together
+    mean_z_depth = find_average_fish_spot_depth(fish_spots)
+
+    return individual_replicate_output
+
    # @Debug
-    if True:
+    if False:
         # for i in range(0, fish_image.shape[0]):
         #     fig, ax = plt.subplots(1, 4)
         #     ax[0].imshow(nucleus_image[i,:,:], cmap='gray')
@@ -242,6 +261,8 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
     fish_spots_to_keep = np.full(shape=(len(fish_regions), 1), fill_value=False, dtype=bool)
     fish_spot_total_pixels = []
 
+    fish_rc_centers = []
+
     for idx, region in enumerate(fish_regions):
         # spot = fish_image[region]
         spot_mask = fish_mask[region]
@@ -251,6 +272,7 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
 
         test_spot_center_r = int(math.floor((region[1].start + region[1].stop)/2))
         test_spot_center_c = int(math.floor((region[2].start + region[2].stop)/2))
+        fish_rc_centers.append([test_spot_center_r, test_spot_center_c])
 
         num_of_pixels_in_fish_region = np.sum(spot_mask)
 
@@ -270,7 +292,7 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, input_p
     # fish_centers = list(compress(fish_centers,fish_spots_to_keep))
     fish_regions = list(compress(fish_regions, fish_spots_to_keep))
 
-    return fish_regions, fish_mask, fish_spot_total_pixels
+    return fish_regions, fish_mask, fish_spot_total_pixels, fish_rc_centers
 
 
 def max_project(image):
@@ -320,3 +342,50 @@ def circ(region):
     circularity = (4 * math.pi * region.area) / (region.perimeter * region.perimeter)
 
     return circularity
+
+
+def find_average_fish_spot_depth(fish_spots):
+
+    z = []
+    for region in fish_spots:
+        z.append(int(math.floor((region[0].start + region[0].stop)/2)))
+
+    mean_z_depth = np.mean(z)
+
+    return mean_z_depth
+
+def make_output_directories(input_params):
+
+    if input_params.o:
+        output_parent_dir = os.path.join(input_params.parent_dir, input_params.o)
+    else:
+        output_parent_dir = os.path.join(input_params.parent_dir, 'output')
+
+    output_dirs = {'parent': output_parent_dir,
+                   'individual': os.path.join(output_parent_dir, 'individual'),
+                   'summary': os.path.join(output_parent_dir, 'summary'),
+                   'individual_images': os.path.join(output_parent_dir, 'individual', 'fish_spot_images')}
+
+    # make folders if they don't exist
+    if not os.path.isdir(output_parent_dir):
+        os.mkdir(output_parent_dir)
+
+    for key, folder in output_dirs.items():
+        if key is not 'output_parent':
+            if not os.path.isdir(folder):
+                if not os.path.isdir(os.path.dirname(
+                        folder)):  # so I guess .items() is random order of dictionary keys. So when making subfolders, if the parent doesn't exist, then we would get an error. This accounts for that.
+                    os.mkdir(os.path.dirname(folder))
+
+                os.mkdir(folder)
+
+    return output_dirs
+
+
+def adjust_excel_column_width(writer, output):
+    for key, sheet in writer.sheets.items():
+        for idx, name in enumerate(output.columns):
+            col_width = len(name) + 2
+            sheet.set_column(idx, idx, col_width)
+
+    return writer

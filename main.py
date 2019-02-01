@@ -21,14 +21,27 @@ parser = argparse.ArgumentParser()
 input_params = methods.parse_arguments(parser)
 
 input_params.multiple_IF_flag = False  # this is a flag that we switch if there are more than 1 IF channels to localize
+input_params.xy_um_per_px = 0.057
+input_params.z_um_per_px = 0.2
+
+x = input_params.b / input_params.xy_um_per_px
+
+input_params.box_edge_xy = x  # size of box around FISH spot for plotting in xy. We will get z by average depth of fish spots
 
 if not os.path.isdir(input_params.parent_dir):
     print('Error: Could not read or find parent directory')
     sys.exit(0)
 
+# make output directories
+output_dirs = methods.make_output_directories(input_params)
+
 # get number of experiments/sub-directories to analyze
 dir_list = os.listdir(input_params.parent_dir)
 file_ext = ".nd"
+
+replicate_writer = pd.ExcelWriter(os.path.join(output_dirs['individual'], 'individual_spot_output.xlsx'),
+                                  engine='xlsxwriter')
+individual_replicate_output = pd.DataFrame()
 
 for folder in dir_list:
     if not folder.startswith('.') and \
@@ -38,12 +51,22 @@ for folder in dir_list:
             base_name_files = [f for f in file_list if file_ext in f
                                and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
             base_name_files.sort(reverse=False)
+
+            count = 0
+            individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity'])
             for file in base_name_files:
                 sample_name = file.replace(file_ext, '')
                 replicate_files = [r for r in file_list if sample_name in r
                                    and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
 
-                methods.analyze_replicate(replicate_files, input_params, folder)
+                temp_individual_replicate_output =  methods.analyze_replicate(replicate_files, input_params, folder, individual_replicate_output)
 
+                individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
 
-# generate output folders
+            individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
+
+replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
+replicate_writer.save()
+
+# @ JON start here: There is a bug where the channels are output twice per replicate for some reason?
+# Also Excel complains that the channels are actually numbers
