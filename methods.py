@@ -92,7 +92,7 @@ def load_images(replicate_files, input_params, parent_dir):
     return data
 
 
-def analyze_replicate(data, input_params, parent_dir):
+def analyze_replicate(data, input_params):
 
     # get nuclear mask
     nuclear_regions, nuclear_mask, nuclear_binary_labeled = find_nucleus(data.nucleus_image, input_params)
@@ -102,7 +102,7 @@ def analyze_replicate(data, input_params, parent_dir):
     fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
 
     # filter FISH spots by nuclear localization and size
-    fish_spots_filt, fish_mask_filt, fish_spot_total_pixels, fish_rc_centers, nucleus_with_fish_spot = filter_fish_spots(fish_spots, data.fish_image,
+    fish_spots_filt, fish_mask_filt, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot = filter_fish_spots(fish_spots, data.fish_image,
                                                                       fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
     fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
 
@@ -123,21 +123,82 @@ def analyze_replicate(data, input_params, parent_dir):
     data.nuclear_binary_labeled = nuclear_binary_labeled
     data.fish_spots = fish_spots_filt
     data.fish_mask = fish_mask_filt
-    data.fish_rc_centers = fish_rc_centers
+    data.fish_centers = fish_centers
 
     return individual_replicate_output, data
 
 
 def generate_random_data(data, input_params):
+    # maybe for every FISH spot, we select one random spot
+    num_of_fish_spots = len(data.fish_spots)
 
-    # data is a list of the data structures for a given experiment
+    # pick random x, y, and z integers to make a random box within image.
+    # choose low and high thresholds to make sure boxes don't go over edges of image
 
-    # @Improve Some nuclei are stuck together
+    mean_fish_length_z, mean_fish_length_r, mean_fish_length_c = find_average_fish_spot_parameter(data.fish_spots)
 
-    mean_z_depth = find_average_fish_spot_depth(data.fish_spots)
+    rand_box_z = math.floor(mean_fish_length_z/2)
+    rand_box_r = math.floor(mean_fish_length_r/2)
+    rand_box_c = math.floor(mean_fish_length_c/2)
 
+    r, c = np.where(data.nuclear_mask)  # limit x,y choice to nuclear pixels
+    z_stack_num = data.fish_image.shape[0]  # limit z choice to z stack number
+    z_range = get_middle_z_range(z_stack_num)
+    z = list(range(z_range[0], z_range[1]))
 
+    # NOTE: We take a shortcut for finding nuclear pixels where we do a max_z projection and only look at the 2D
+    # image. This means that we don't know where the nuclear pixels are in the z. Therefore, for right now,
+    # I am going to just find the middle 50% z-stacks of the image and call these valid. So this loop below will
+    # find valid x,y pixels in nuclei, and then pick a random z within the middle 50% of the image.
 
+    rand_spots = []
+    for n in range(num_of_fish_spots):
+        count = 1
+        i = np.random.randint(len(r))
+
+        valid_spot_flag = False
+        while valid_spot_flag:
+            if all([0 < i - rand_box_r < data.fish_image.shape[1],  # make sure we are in bounds of image
+                    0 < i - rand_box_c < data.fish_image.shape[2],  # make sure we are in bounds of image
+                    data.nuclear_mask[r[i-rand_box_r], c[i-rand_box_c]],  # make sure we are still in nucleus with box
+                    data.nuclear_mask[r[i+rand_box_r], c[i+rand_box_c]]]):
+
+                zi = np.random.randint(len(z))
+
+                rand_r = r[i]
+                rand_c = c[i]
+                rand_z = z[zi]
+
+                rand_spots.append([slice(rand_z - rand_box_z, rand_z + rand_box_z),
+                                   slice(rand_r - rand_box_r, rand_r + rand_box_r),
+                                   slice(rand_c - rand_box_c, rand_c + rand_box_c)])
+
+                valid_spot_flag = True
+
+            else:
+                i = np.random.randint(len(r))  # choose another spot if the previous one failed
+                count += 1
+
+    print("Number of random points selected before finding a valid one: ", count)
+    print()
+
+    data.rand_spots = rand_spots
+
+    # @Debug
+    test = np.full(shape=data.nucleus_image.shape, fill_value=False, dtype=bool)
+    for region in rand_spots:
+        test[region[1], region[2]] = True
+
+    test = test*1
+
+    fig, ax = plt.subplots(1,2)
+
+    ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
+    ax[1].imshow(max_project(test), cmap='gray')
+
+    plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
+
+    return data
 
 def find_nucleus(image, input_params):
     image = nd.gaussian_filter(image, sigma=2.0)
@@ -187,17 +248,32 @@ def find_nucleus(image, input_params):
     return nuclear_regions, nuclear_mask, nuclear_binary_labeled
 
 def find_fish_spot(image, input_params):
-    image = nd.gaussian_filter(image, sigma=2.0)
+    # because I run into memory errors, we will determine mean and std intensity on the middle 50% of the z-stack
+    # @Improvement Could probably just choose x random spots and calculate mean/std from that. Maybe faster and more
+    # memory efficient
+
+    n = 500
+    index = np.random.choice(image.shape[1], n, replace=False)
+    middle_z = math.floor(image.shape[0]/2)
+
+    # z_stacks = image.shape[0]
+    # z_range = get_middle_z_range(z_stacks)
+    # z_cropped_image = image[slice(z_range[0], z_range[1]),:,:]
+
+    # z_cropped_image = nd.gaussian_filter(image, sigma=2.0)
+
     # image = img_as_float(image)
     threshold_multiplier = input_params.tm
 
     fish_mask = np.full(shape=image.shape, fill_value=False, dtype=bool)
 
     # simple thresholding
-    mean_intensity = np.mean(image)/65536
-    std_intensity = np.std(image)/65536
+    mean_intensity = np.mean(image[middle_z, index, index])
+    std_intensity = np.std(image[middle_z, index, index])
+    print('Mean intensity: ', mean_intensity)
+    print('Std intensity: ', std_intensity)
 
-    image = img_as_float(image)
+    # image = img_as_float(image)
     threshold = mean_intensity + (std_intensity * threshold_multiplier)
     # fish_mask[image > threshold] = True
     fish_mask[np.where(image > threshold)] = True
@@ -232,7 +308,7 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
     fish_spot_total_pixels = []
     nucleus_with_fish_spot = []
 
-    fish_rc_centers = []
+    fish_centers = []
 
     for idx, region in enumerate(fish_regions):
         # spot = fish_image[region]
@@ -240,10 +316,11 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
 
         # slice_of_max_z = np.argmax(spot, axis=0)
         # test_spot = spot[slice_of_max_z, :, :]
-
+        test_spot_center_z = int(math.floor((region[0].start + region[0].stop)/2))
         test_spot_center_r = int(math.floor((region[1].start + region[1].stop)/2))
         test_spot_center_c = int(math.floor((region[2].start + region[2].stop)/2))
-        fish_rc_centers.append([test_spot_center_r, test_spot_center_c])
+
+        fish_centers.append([test_spot_center_z, test_spot_center_r, test_spot_center_c])
 
         num_of_pixels_in_fish_region = np.sum(spot_mask)
 
@@ -269,7 +346,7 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
     print("Number of FISH spots after filtering: ", len(fish_regions))
     print()
 
-    return fish_regions, fish_mask, fish_spot_total_pixels, fish_rc_centers, nucleus_with_fish_spot
+    return fish_regions, fish_mask, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot
 
 
 def max_project(image):
@@ -321,14 +398,22 @@ def circ(region):
     return circularity
 
 
-def find_average_fish_spot_depth(fish_spots):
+def find_average_fish_spot_parameter(fish_spots):
+    # this gets the average length in the z, x, and y directions for all fish spots of a given replicate
+    r = []
+    c = []
     z = []
+
     for region in fish_spots:
-        z.append(int(math.floor((region[0].start + region[0].stop)/2)))
+        z.append(region[0].stop - region[0].start)
+        r.append(region[1].stop - region[1].start)
+        c.append(region[2].stop - region[2].start)
 
-    mean_z_depth = np.mean(z)
+    mean_z = np.mean(z)
+    mean_r = np.mean(r)
+    mean_c = np.mean(c)
 
-    return mean_z_depth
+    return mean_z, mean_r, mean_c
 
 def make_output_directories(input_params):
 
@@ -364,3 +449,15 @@ def adjust_excel_column_width(writer, output):
             sheet.set_column(idx, idx, col_width)
 
     return writer
+
+
+def get_middle_z_range(z):
+    # this will find the middle z stack indices of an image stack
+    middle_z = math.floor(z/2)
+
+    top_range = int(np.median(list(range(middle_z, z))))
+    bottom_range = int(np.median(list(range(middle_z))))
+
+    output = (bottom_range, top_range)
+
+    return output

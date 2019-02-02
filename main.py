@@ -42,10 +42,9 @@ file_ext = ".nd"
 
 replicate_writer = pd.ExcelWriter(os.path.join(output_dirs['individual'], 'individual_spot_output.xlsx'),
                                   engine='xlsxwriter')
+random_writer = pd.ExcelWriter(os.path.join(output_dirs['individual'], 'random_spot_output.xlsx'),
+                                  engine='xlsxwriter')
 
-data = []
-
-data_count = 0
 for folder in dir_list:  # folder is a separate experiment
     if not folder.startswith('.') and \
             os.path.isdir(os.path.join(input_params.parent_dir, folder)):  # to not include hidden files or folders
@@ -56,27 +55,27 @@ for folder in dir_list:  # folder is a separate experiment
             base_name_files.sort(reverse=False)
 
             individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity'])
+            random_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
 
-            replicate_data_idx = []
             for file in base_name_files:  # file is the nd file associated with a group of images for a replicate
                 sample_name = file.replace(file_ext, '')
                 replicate_files = [r for r in file_list if sample_name in r
                                    and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
 
-                temp_data = methods.load_images(replicate_files, input_params, folder)
-                data.append(temp_data)
+                data = methods.load_images(replicate_files, input_params, folder)
 
-                temp_individual_replicate_output, data[data_count] =  methods.analyze_replicate(data[data_count], input_params, folder)
+                temp_individual_replicate_output, data =  methods.analyze_replicate(data, input_params)
 
                 individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
 
-                replicate_data_idx.append(data_count)
-                data_count += 1
+                data = methods.generate_random_data(data, input_params)
+
+                # temp_random_output = methods.analyze_random(data, input_params, folder)
+
+                # random_output = random_output.append(temp_random_output, ignore_index=True)
 
 
             individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
-
-            random_output = methods.generate_random_data(data[slice(min(replicate_data_idx), max(replicate_data_idx))], input_params)
 
 
 replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
