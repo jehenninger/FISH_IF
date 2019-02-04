@@ -132,6 +132,7 @@ def generate_random_data(data, input_params):
     # maybe for every FISH spot, we select one random spot
     num_of_fish_spots = len(data.fish_spots)
 
+    # JON START HERE. Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
     # pick random x, y, and z integers to make a random box within image.
     # choose low and high thresholds to make sure boxes don't go over edges of image
 
@@ -157,11 +158,11 @@ def generate_random_data(data, input_params):
         i = np.random.randint(len(r))
 
         valid_spot_flag = False
-        while valid_spot_flag:
-            if all([0 < i - rand_box_r < data.fish_image.shape[1],  # make sure we are in bounds of image
-                    0 < i - rand_box_c < data.fish_image.shape[2],  # make sure we are in bounds of image
-                    data.nuclear_mask[r[i-rand_box_r], c[i-rand_box_c]],  # make sure we are still in nucleus with box
-                    data.nuclear_mask[r[i+rand_box_r], c[i+rand_box_c]]]):
+        while not valid_spot_flag:
+            if all([0 < r[i] - rand_box_r < data.fish_image.shape[1],  # make sure we are in bounds of image
+                    0 < c[i] - rand_box_c < data.fish_image.shape[2],  # make sure we are in bounds of image
+                    data.nuclear_mask[r[r[i] - rand_box_r], c[c[i] - rand_box_c]],  # make sure we are still in nucleus with box
+                    data.nuclear_mask[r[r[i] + rand_box_r], c[c[i] + rand_box_c]]]):
 
                 zi = np.random.randint(len(z))
 
@@ -179,22 +180,22 @@ def generate_random_data(data, input_params):
                 i = np.random.randint(len(r))  # choose another spot if the previous one failed
                 count += 1
 
-    print("Number of random points selected before finding a valid one: ", count)
-    print()
+        print("Number of random points selected before finding a valid one: ", count)
+        print()
 
     data.rand_spots = rand_spots
 
     # @Debug
-    test = np.full(shape=data.nucleus_image.shape, fill_value=False, dtype=bool)
+    test = np.full(shape=data.nuclear_mask.shape, fill_value=False, dtype=bool)
     for region in rand_spots:
         test[region[1], region[2]] = True
 
-    test = test*1
+    test = test*1.0
 
     fig, ax = plt.subplots(1,2)
 
     ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
-    ax[1].imshow(max_project(test), cmap='gray')
+    ax[1].imshow(test, cmap='gray')
 
     plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
 
