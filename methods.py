@@ -108,16 +108,38 @@ def analyze_replicate(data, input_params):
 
 
     # measure IF channels
-    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity'])
+    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
 
+    mean_protein_along_z = []
     for idx, image in enumerate(data.protein_images):
         for s, spot in enumerate(fish_spots_filt):
             mean_intensity = np.mean(image[spot])
 
+            mean_protein_along_z.append(get_mean_along_z(image[spot]))
+
             individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
                                                                               'IF_channel' : int(data.protein_channel_names[idx]),
-                                                                              'mean_intensity' : mean_intensity},
+                                                                              'mean_intensity' : mean_intensity,
+                                                                              'center_z' : fish_centers[s][0],
+                                                                              'center_r' : fish_centers[s][1],
+                                                                              'center_c' : fish_centers[s][2]},
                                                                              ignore_index=True)
+    # measure FISH channel
+    individual_fish_output = pd.DataFrame(
+        columns=['sample', 'spot_id', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
+    mean_fish_along_z = []
+    for s, spot in enumerate(fish_spots_filt):
+        mean_intensity = np.mean(data.fish_image[spot])
+
+        mean_fish_along_z.append(get_mean_along_z(data.fish_image[spot]))
+
+        individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                          'mean_intensity': mean_intensity,
+                                                                          'center_z': fish_centers[s][0],
+                                                                          'center_r': fish_centers[s][1],
+                                                                          'center_c': fish_centers[s][2]},
+                                                                         ignore_index=True)
+
     data.nuclear_regions = nuclear_regions
     data.nuclear_mask = nuclear_mask
     data.nuclear_binary_labeled = nuclear_binary_labeled
@@ -125,14 +147,15 @@ def analyze_replicate(data, input_params):
     data.fish_mask = fish_mask_filt
     data.fish_centers = fish_centers
 
-    return individual_replicate_output, data
+
+    return individual_replicate_output, individual_fish_output, mean_protein_along_z, mean_fish_along_z, data
 
 
 def generate_random_data(data, input_params):
     # maybe for every FISH spot, we select one random spot
     num_of_fish_spots = len(data.fish_spots)
 
-    # JON START HERE. Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
+    # @Improvement  Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
     # pick random x, y, and z integers to make a random box within image.
     # choose low and high thresholds to make sure boxes don't go over edges of image
 
@@ -179,27 +202,49 @@ def generate_random_data(data, input_params):
             else:
                 i = np.random.randint(len(r))  # choose another spot if the previous one failed
                 count += 1
+        # @Debug
+        # print("Number of random points selected before finding a valid one: ", count)
+        # print()
 
-        print("Number of random points selected before finding a valid one: ", count)
-        print()
+    # measure IF channels
+    random_replicate_output = pd.DataFrame(
+        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
 
+    mean_protein_along_z = []
+    for idx, image in enumerate(data.protein_images):
+        for s, spot in enumerate(rand_spots):
+            mean_intensity = np.mean(image[tuple(spot)])  # Is this correct? Python gives a warning about deprecation if I don't have tuple()
+            spot_center_z = int(math.floor((spot[0].start + spot[0].stop) / 2))
+            spot_center_r = int(math.floor((spot[1].start + spot[1].stop) / 2))
+            spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
+
+            mean_protein_along_z.append(get_mean_along_z(image[tuple(spot)])) # Is this correct? Python gives a warning about deprecation if I don't have tuple()
+
+            random_replicate_output = random_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                              'IF_channel': int(
+                                                                                  data.protein_channel_names[idx]),
+                                                                              'mean_intensity': mean_intensity,
+                                                                              'center_z': spot_center_z,
+                                                                              'center_r': spot_center_r,
+                                                                              'center_c': spot_center_c},
+                                                                              ignore_index=True)
     data.rand_spots = rand_spots
 
     # @Debug
-    test = np.full(shape=data.nuclear_mask.shape, fill_value=False, dtype=bool)
-    for region in rand_spots:
-        test[region[1], region[2]] = True
+    # test = np.full(shape=data.nuclear_mask.shape, fill_value=False, dtype=bool)
+    # for region in rand_spots:
+    #     test[region[1], region[2]] = True
+    #
+    # test = test*1.0
+    #
+    # fig, ax = plt.subplots(1,2)
+    #
+    # ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
+    # ax[1].imshow(test, cmap='gray')
+    #
+    # plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
 
-    test = test*1.0
-
-    fig, ax = plt.subplots(1,2)
-
-    ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
-    ax[1].imshow(test, cmap='gray')
-
-    plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
-
-    return data
+    return random_replicate_output, mean_protein_along_z, data
 
 def find_nucleus(image, input_params):
     image = nd.gaussian_filter(image, sigma=2.0)
@@ -350,6 +395,9 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
     return fish_regions, fish_mask, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot
 
 
+def analyze_sample(mean_fish_collection, mean_protein_collection, mean_random_collection, input_params):
+    projected_mean_fish = np.mean(mean_fish_collection)
+
 def max_project(image):
     projection = np.max(image, axis=0)
 
@@ -462,3 +510,9 @@ def get_middle_z_range(z):
     output = (bottom_range, top_range)
 
     return output
+
+
+def get_mean_along_z(image):
+    mean_z = np.mean(image, 0)
+
+    return mean_z
