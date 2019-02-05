@@ -156,10 +156,10 @@ def generate_random_data(data, input_params):
         count = 1
         i = np.random.randint(len(r))
 
-        valid_spot_flag = False
+        valid_spot_flag = False # @Jon start here! Make sure that we are indexing into the correct arrays when checking things.
         while valid_spot_flag:
-            if all([0 < i - rand_box_r < data.fish_image.shape[1],  # make sure we are in bounds of image
-                    0 < i - rand_box_c < data.fish_image.shape[2],  # make sure we are in bounds of image
+            if all([0 < r[i] - rand_box_r < data.fish_image.shape[1],  # make sure we are in bounds of image
+                    0 < c[i] - rand_box_c < data.fish_image.shape[2],  # make sure we are in bounds of image
                     data.nuclear_mask[r[i-rand_box_r], c[i-rand_box_c]],  # make sure we are still in nucleus with box
                     data.nuclear_mask[r[i+rand_box_r], c[i+rand_box_c]]]):
 
