@@ -18,10 +18,10 @@ def parse_arguments(parser):
 
     # required arguments
     parser.add_argument("parent_dir")
+    parser.add_argument("output_path", type=str)
     parser.add_argument("fish_channel")
 
     # optional arguments
-    parser.add_argument("--o", type=str)
     parser.add_argument("--tm", type=float, default=3.0)
     parser.add_argument("--min_a", type=float, default=1000)  # number of voxels
     parser.add_argument("--max_a", type=float, default=10000)  # number of voxels
@@ -456,14 +456,14 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
     return fish_regions, fish_mask, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot
 
 
-def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params):
+def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params, experiment_dir):
     # mean_protein and random_mean will be lists with length equal to the number of IF channels. Each element of the
     # list is a 3D array where the first axis is the number of fish spots, and the second two axes are the x and y arrays
 
     # mean_fish will be just a 3D array where the first axis is the number of fish spots, and the second two axes
     # are the x and y arrays
+    sample_name = os.path.basename(os.path.dirname(experiment_dir))
 
-    # @Jon start here! Something is wrong the projected means. For some reason fish is 3D and protein/random are single lists??
     if len(mean_fish_collection) > 1:
         projected_fish = np.mean(mean_fish_collection, axis=0)
     else:
@@ -479,7 +479,7 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
 
     # make a graph for each channel (and include FISH in both)
     for idx, val in enumerate(mean_protein_collection):
-        grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx], data, input_params)
+        grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx], sample_name, data.protein_channel_names[idx], data, input_params)
 
 def max_project(image):
     projection = np.max(image, axis=0)
@@ -548,11 +548,7 @@ def find_average_fish_spot_parameter(fish_spots):
     return mean_z, mean_r, mean_c
 
 def make_output_directories(input_params):
-
-    if input_params.o:
-        output_parent_dir = os.path.join(os.path.dirname(input_params.parent_dir), input_params.o)
-    else:
-        output_parent_dir = os.path.join(os.path.dirname(input_params.parent_dir), 'output')
+    output_parent_dir = input_params.output_path
 
     output_dirs = {'parent': output_parent_dir,
                    'individual': os.path.join(output_parent_dir, 'individual'),

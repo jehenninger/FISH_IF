@@ -96,7 +96,7 @@ for folder in dir_list:  # folder is a separate experiment
             random_replicate_output.to_excel(random_writer, sheet_name=folder[0:15], index=False)
 
             data.output_directories = output_dirs
-            methods.analyze_sample(mean_fish_storage, mean_protein_storage, random_mean_storage, data, input_params)
+            methods.analyze_sample(mean_fish_storage, mean_protein_storage, random_mean_storage, data, input_params, folder)
 
 
 replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
