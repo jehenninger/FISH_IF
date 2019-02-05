@@ -3,6 +3,15 @@ import grapher
 
 import matplotlib
 matplotlib.use('Agg')
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+matplotlib.rcParams['text.usetex'] = False
+matplotlib.rcParams['font.sans-serif'] = 'Arial'
+matplotlib.rcParams['font.family'] = 'sans-serif'
+
+# NOTE: If python/matplotlib cannot find the correct font, then run the following in the python console:
+# matplotlib.font_manager._rebuild()
+
 import numpy as np
 import pandas as pd
 import os
@@ -64,7 +73,7 @@ for folder in dir_list:  # folder is a separate experiment
 
             individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
             random_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
-            individual_fish_output = pd.DataFrame(columns=['sample', 'spot_id', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
+            individual_fish_output = pd.DataFrame(columns=['sample', 'spot_id', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
 
             for file in base_name_files:  # file is the nd file associated with a group of images for a replicate
                 sample_name = file.replace(file_ext, '')

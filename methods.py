@@ -3,6 +3,7 @@ import argparse
 import os
 import sys
 import imageio as io
+
 from matplotlib import pyplot as plt
 from scipy import ndimage as nd
 import numpy as np
@@ -109,7 +110,7 @@ def analyze_replicate(data, input_params):
 
 
     # measure IF channels
-    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
+    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
 
     mean_protein_storage = []
     for idx, image in enumerate(data.protein_images):
@@ -138,15 +139,16 @@ def analyze_replicate(data, input_params):
             individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
                                                                               'IF_channel' : int(data.protein_channel_names[idx]),
                                                                               'mean_intensity' : mean_intensity,
-                                                                              'center_z' : fish_centers[s][0],
                                                                               'center_r' : fish_centers[s][1],
-                                                                              'center_c' : fish_centers[s][2]},
+                                                                              'center_c' : fish_centers[s][2],
+                                                                              'center_z': fish_centers[s][0],
+                                                                              },
                                                                              ignore_index=True)
         mean_protein_storage.append(mean_storage)
 
     # measure FISH channel
     individual_fish_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
+        columns=['sample', 'spot_id', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
 
     mean_fish_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
     for s, spot in enumerate(fish_spots_filt):
@@ -168,9 +170,9 @@ def analyze_replicate(data, input_params):
 
         individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
                                                                           'mean_intensity': mean_intensity,
-                                                                          'center_z': fish_centers[s][0],
                                                                           'center_r': fish_centers[s][1],
-                                                                          'center_c': fish_centers[s][2]},
+                                                                          'center_c': fish_centers[s][2],
+                                                                          'center_z': fish_centers[s][0]},
                                                                          ignore_index=True)
 
     data.nuclear_regions = nuclear_regions
@@ -243,7 +245,7 @@ def generate_random_data(data, input_params):
 
     # measure IF channels
     random_replicate_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_z', 'center_r', 'center_c'])
+        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
 
     random_mean_storage = []
     for idx, image in enumerate(data.protein_images):
@@ -276,9 +278,9 @@ def generate_random_data(data, input_params):
                                                                               'IF_channel': int(
                                                                                   data.protein_channel_names[idx]),
                                                                               'mean_intensity': mean_intensity,
-                                                                              'center_z': spot_center_z,
                                                                               'center_r': spot_center_r,
-                                                                              'center_c': spot_center_c},
+                                                                              'center_c': spot_center_c,
+                                                                              'center_z': spot_center_z},
                                                                               ignore_index=True)
         random_mean_storage.append(mean_storage)
 
@@ -462,7 +464,6 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
 
     # mean_fish will be just a 3D array where the first axis is the number of fish spots, and the second two axes
     # are the x and y arrays
-    sample_name = os.path.basename(os.path.dirname(experiment_dir))
 
     if len(mean_fish_collection) > 1:
         projected_fish = np.mean(mean_fish_collection, axis=0)
@@ -479,7 +480,8 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
 
     # make a graph for each channel (and include FISH in both)
     for idx, val in enumerate(mean_protein_collection):
-        grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx], sample_name, data.protein_channel_names[idx], data, input_params)
+        grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx],
+                                     experiment_dir, data.protein_channel_names[idx], data, input_params)
 
 def max_project(image):
     projection = np.max(image, axis=0)
@@ -595,3 +597,12 @@ def get_mean_along_z(image):
     mean_z = np.mean(image, 0)
 
     return mean_z
+
+
+def hex_to_rgb(hex_string):
+    hex_string = hex_string.lstrip('#')
+    rgb = tuple(int(hex_string[i:i+2],16) for i in (0, 2, 4))
+
+    rgb = [r/255 for r in rgb]
+
+    return rgb
