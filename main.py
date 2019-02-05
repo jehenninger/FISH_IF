@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import argparse
 import json
 from datetime import datetime
+import math
 
 
 # This is written so that all replicates for a given experiment are in a folder together (both .TIF and .nd files)
@@ -24,7 +25,8 @@ input_params.multiple_IF_flag = False  # this is a flag that we switch if there 
 input_params.xy_um_per_px = 0.057
 input_params.z_um_per_px = 0.2
 
-x = input_params.b / input_params.xy_um_per_px
+# x = math.floor(input_params.b / input_params.xy_um_per_px)
+x = input_params.b/input_params.xy_um_per_px
 
 input_params.box_edge_xy = x  # size of box around FISH spot for plotting in xy. We will get z by average depth of fish spots
 
@@ -73,18 +75,12 @@ for folder in dir_list:  # folder is a separate experiment
 
                 temp_individual_replicate_output, temp_individual_fish_output, mean_protein_storage, mean_fish_storage, data =  methods.analyze_replicate(data, input_params)
 
-                for p in mean_protein_storage:
-                    mean_protein_collection.append(np.mean(p, axis=0))
-
                 mean_fish_collection = mean_fish_storage
 
                 individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
                 individual_fish_output = individual_fish_output.append(temp_individual_fish_output, ignore_index=True)
 
                 temp_random_replicate_output, random_mean_storage, data = methods.generate_random_data(data, input_params)
-
-                for r in random_mean_storage:
-                    random_mean_collection.append(np.mean(r, axis=0))
 
 
                 random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
@@ -100,7 +96,7 @@ for folder in dir_list:  # folder is a separate experiment
             random_replicate_output.to_excel(random_writer, sheet_name=folder[0:15], index=False)
 
             data.output_directories = output_dirs
-            methods.analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params)
+            methods.analyze_sample(mean_fish_storage, mean_protein_storage, random_mean_storage, data, input_params)
 
 
 replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
