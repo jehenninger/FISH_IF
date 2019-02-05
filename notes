@@ -20,5 +20,8 @@ Maybe have separate function to quickly test different thresholds to see what wo
 Right now, we use the middle 50% of the z stacks as "valid nuclei". We could improve this, but would have to re-think
 how we call nuclear pixels
 @Improvement Could probably just choose x random spots and calculate mean/std from that. Maybe faster and more
-    # memory efficient
+    memory efficient  
+       @Improvement  Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
+    pick random x, y, and z integers to make a random box within image.
+    choose low and high thresholds to make sure boxes don't go over edges of image
 
