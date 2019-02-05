@@ -71,9 +71,9 @@ for folder in dir_list:  # folder is a separate experiment
                                and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
             base_name_files.sort(reverse=False)
 
-            individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
-            random_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
-            individual_fish_output = pd.DataFrame(columns=['sample', 'spot_id', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
+            individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+            random_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+            individual_fish_output = pd.DataFrame(columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
             for file in base_name_files:  # file is the nd file associated with a group of images for a replicate
                 sample_name = file.replace(file_ext, '')
@@ -94,11 +94,11 @@ for folder in dir_list:  # folder is a separate experiment
 
                 random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
 
-            individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z']]
+            individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             individual_fish_output = individual_fish_output[
-                ['sample', 'spot_id', 'mean_intensity', 'center_r', 'center_c', 'center_z']]
+                ['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             random_replicate_output = random_replicate_output[
-                ['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z']]
+                ['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
 
             individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
             individual_fish_output.to_excel(fish_writer, sheet_name=folder[0:15], index=False)

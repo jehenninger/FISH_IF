@@ -110,7 +110,7 @@ def analyze_replicate(data, input_params):
 
 
     # measure IF channels
-    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
+    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
     mean_protein_storage = []
     for idx, image in enumerate(data.protein_images):
@@ -129,6 +129,7 @@ def analyze_replicate(data, input_params):
 
             fish_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
             mean_intensity = np.mean(fish_spot)
+            max_intensity = np.max(fish_spot)
 
 
             mean_storage[s, :, :] = np.mean(fish_spot, axis=0)
@@ -139,6 +140,7 @@ def analyze_replicate(data, input_params):
             individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
                                                                               'IF_channel' : int(data.protein_channel_names[idx]),
                                                                               'mean_intensity' : mean_intensity,
+                                                                              'max_intensity' : max_intensity,
                                                                               'center_r' : fish_centers[s][1],
                                                                               'center_c' : fish_centers[s][2],
                                                                               'center_z': fish_centers[s][0],
@@ -148,7 +150,7 @@ def analyze_replicate(data, input_params):
 
     # measure FISH channel
     individual_fish_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
+        columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
     mean_fish_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
     for s, spot in enumerate(fish_spots_filt):
@@ -165,11 +167,13 @@ def analyze_replicate(data, input_params):
         fish_spot = data.fish_image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
 
         mean_intensity = np.mean(fish_spot)
+        max_intensity = np.max(fish_spot)
 
         mean_fish_storage[s, :, :] = np.mean(fish_spot, axis=0)
 
         individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
                                                                           'mean_intensity': mean_intensity,
+                                                                          'max_intensity': max_intensity,
                                                                           'center_r': fish_centers[s][1],
                                                                           'center_c': fish_centers[s][2],
                                                                           'center_z': fish_centers[s][0]},
@@ -245,7 +249,7 @@ def generate_random_data(data, input_params):
 
     # measure IF channels
     random_replicate_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'center_r', 'center_c', 'center_z'])
+        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
     random_mean_storage = []
     for idx, image in enumerate(data.protein_images):
@@ -267,6 +271,7 @@ def generate_random_data(data, input_params):
 
             rand_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
             mean_intensity = np.mean(rand_spot)
+            max_intensity = np.max(rand_spot)
 
 
             mean_storage[s, :, :] = np.mean(rand_spot, axis=0)
@@ -278,6 +283,7 @@ def generate_random_data(data, input_params):
                                                                               'IF_channel': int(
                                                                                   data.protein_channel_names[idx]),
                                                                               'mean_intensity': mean_intensity,
+                                                                              'max_intensity' : max_intensity,
                                                                               'center_r': spot_center_r,
                                                                               'center_c': spot_center_c,
                                                                               'center_z': spot_center_z},
