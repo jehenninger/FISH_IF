@@ -489,6 +489,10 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
         grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx],
                                      experiment_dir, data.protein_channel_names[idx], data, input_params)
 
+        grapher.make_3D_surface_plot(projected_fish, projected_protein[idx], projected_random[idx],
+                                     experiment_dir, data.protein_channel_names[idx], data, input_params)
+
+
 def max_project(image):
     projection = np.max(image, axis=0)
 
