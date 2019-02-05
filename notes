@@ -25,3 +25,5 @@ how we call nuclear pixels
     pick random x, y, and z integers to make a random box within image.
     choose low and high thresholds to make sure boxes don't go over edges of image
 
+@Todo Handle cases where the FISH spot is near the edges of the image. This will probably throw errors currently.
+@Todo handle cases where user puts the files in wrong (like if they forgot to put experiments in unique folders)
