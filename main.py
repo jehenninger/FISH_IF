@@ -1,6 +1,3 @@
-import methods
-import grapher
-
 import matplotlib
 matplotlib.use('Agg')
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -8,6 +5,10 @@ matplotlib.rcParams['ps.fonttype'] = 42
 matplotlib.rcParams['text.usetex'] = False
 matplotlib.rcParams['font.sans-serif'] = 'Arial'
 matplotlib.rcParams['font.family'] = 'sans-serif'
+
+import methods
+import grapher
+
 
 # NOTE: If python/matplotlib cannot find the correct font, then run the following in the python console:
 # matplotlib.font_manager._rebuild()
@@ -30,7 +31,6 @@ parser = argparse.ArgumentParser()
 
 input_params = methods.parse_arguments(parser)
 
-input_params.multiple_IF_flag = False  # this is a flag that we switch if there are more than 1 IF channels to localize
 input_params.xy_um_per_px = 0.057
 input_params.z_um_per_px = 0.2
 
@@ -65,6 +65,8 @@ for folder in dir_list:  # folder is a separate experiment
     if not folder.startswith('.') and \
             os.path.isdir(os.path.join(input_params.parent_dir, folder)):  # to not include hidden files or folders
 
+            input_params.multiple_IF_flag = False  # this is a flag that we switch if there are more than 1 IF channels to localize
+
             mean_protein_collection = []
             mean_fish_collection = []
             random_mean_collection = []
@@ -84,8 +86,10 @@ for folder in dir_list:  # folder is a separate experiment
                                    and os.path.isfile(os.path.join(input_params.parent_dir, folder, r))]
 
                 data = methods.load_images(replicate_files, input_params, folder)
+                data.output_directories = output_dirs
 
-                temp_individual_replicate_output, temp_individual_fish_output, mean_protein_collection, mean_fish_storage, data =  methods.analyze_replicate(data, input_params, mean_protein_collection)
+                temp_individual_replicate_output, temp_individual_fish_output, mean_protein_collection, mean_fish_storage, data\
+                    =  methods.analyze_replicate(data, input_params, mean_protein_collection)
 
                 if not temp_individual_replicate_output.empty:
                     mean_fish_collection.append(mean_fish_storage)
@@ -98,7 +102,6 @@ for folder in dir_list:  # folder is a separate experiment
 
                     random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
 
-                    data.output_directories = output_dirs
                     grapher.make_image_output(data, input_params)
 
             individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
@@ -114,14 +117,19 @@ for folder in dir_list:  # folder is a separate experiment
 
             methods.analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params, folder)
 
+try:
+    replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
+    random_writer = methods.adjust_excel_column_width(random_writer, random_replicate_output)
+    fish_writer = methods.adjust_excel_column_width(fish_writer, individual_fish_output)
+    replicate_writer.save()
+    fish_writer.save()
+    random_writer.save()
 
-replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)
-random_writer = methods.adjust_excel_column_width(random_writer, random_replicate_output)
-fish_writer = methods.adjust_excel_column_width(fish_writer, individual_fish_output)
-replicate_writer.save()
-fish_writer.save()
-random_writer.save()
+    methods.write_output_params(input_params)
+except:
+    print('Check directory structure because no experiment folders were found')
 
 print("Finished at: ", datetime.now())
 print()
 print("------------------------ Completed -----------------------")
+print()

@@ -307,7 +307,7 @@ def make_image_output(data, input_params):
     protein_image = exposure.equalize_adapthist(methods.max_project(protein_image))
 
     IF_fish_label_overlay = color.label2rgb(fish_label, image=protein_image,
-                                            alpha=master_alpha, image_alpha=1, bg_label=-1)
+                                            alpha=0.3, image_alpha=1, bg_label=-1)
     ax[0, 2].imshow(IF_fish_label_overlay)
     ax[0, 2].set_title('IF_channel_' + str(data.protein_channel_names[0]), {'fontsize': 8})
 
@@ -316,7 +316,7 @@ def make_image_output(data, input_params):
         protein_image_b = exposure.equalize_adapthist(methods.max_project(protein_image_b))
 
         IF_fish_label_overlay_b = color.label2rgb(fish_label, image=protein_image_b,
-                                                  alpha=master_alpha, image_alpha=1, bg_label=-1)
+                                                  alpha=0.3, image_alpha=1, bg_label=-1)
         ax[0, 3].imshow(IF_fish_label_overlay_b)
         ax[0, 3].set_title('IF_channel_' + str(data.protein_channel_names[1]), {'fontsize':8})
 
@@ -324,13 +324,13 @@ def make_image_output(data, input_params):
     # axis 6 (and 7) = IF with random points. Two channels if there are multiple IFs
     #
     IF_rand_label_overlay = color.label2rgb(nucleus_rand_label, image=protein_image,
-                                            alpha=master_alpha, image_alpha=1, bg_label=-1)
+                                            alpha=0.3, image_alpha=1, bg_label=-1)
     ax[1, 2].imshow(IF_rand_label_overlay)
     ax[1, 2].set_title('IF_channel_' + str(data.protein_channel_names[0]), {'fontsize': 8})
 
     if input_params.multiple_IF_flag:
         IF_rand_label_overlay_b = color.label2rgb(nucleus_rand_label, image=protein_image_b,
-                                                  alpha=master_alpha, image_alpha=1, bg_label=-1)
+                                                  alpha=0.3, image_alpha=1, bg_label=-1)
         ax[1, 3].imshow(IF_rand_label_overlay_b)
         ax[1, 3].set_title('IF_channel_' + str(data.protein_channel_names[1]), {'fontsize': 8})
 

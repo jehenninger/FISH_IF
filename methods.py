@@ -14,6 +14,7 @@ from datetime import datetime
 import math
 from itertools import compress
 from types import SimpleNamespace
+import json
 
 def parse_arguments(parser):
 
@@ -108,11 +109,16 @@ def analyze_replicate(data, input_params, mean_protein_storage):
                                                                       fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
     # fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
 
+    individual_fish_output = pd.DataFrame(
+        columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+
+    individual_replicate_output = pd.DataFrame(
+        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c',
+                 'center_z'])
+
     if len(fish_spots_filt) > 0:
 
         # measure IF channels
-        individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
-
         for idx, image in enumerate(data.protein_images):
             mean_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
 
@@ -149,8 +155,7 @@ def analyze_replicate(data, input_params, mean_protein_storage):
             mean_protein_storage.append(mean_storage)
 
         # measure FISH channel
-        individual_fish_output = pd.DataFrame(
-            columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+
 
         mean_fish_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
         for s, spot in enumerate(fish_spots_filt):
@@ -186,10 +191,7 @@ def analyze_replicate(data, input_params, mean_protein_storage):
         data.fish_mask = fish_mask_filt
         data.fish_centers = fish_centers
     else:
-        individual_fish_output = False
-        individual_replicate_output = pd.DataFrame()
-        mean_protein_storage = False
-        mean_fish_storage = False
+        mean_fish_storage = None
 
     return individual_replicate_output, individual_fish_output, mean_protein_storage, mean_fish_storage, data
 
@@ -197,117 +199,128 @@ def analyze_replicate(data, input_params, mean_protein_storage):
 def generate_random_data(data, input_params, random_mean_storage):
     # maybe for every FISH spot, we select one random spot
     num_of_fish_spots = len(data.fish_spots)
-
-    # @Improvement  Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
-    # pick random x, y, and z integers to make a random box within image.
-    # choose low and high thresholds to make sure boxes don't go over edges of image
-
-    mean_fish_length_z, mean_fish_length_r, mean_fish_length_c = find_average_fish_spot_parameter(data.fish_spots)
-
-    rand_box_z = math.floor(mean_fish_length_z/2)
-    rand_box_r = math.floor(mean_fish_length_r/2)
-    rand_box_c = math.floor(mean_fish_length_c/2)
-
-    r, c = np.where(data.nuclear_mask)  # limit x,y choice to nuclear pixels
-    z_stack_num = data.fish_image.shape[0]  # limit z choice to z stack number
-    z_range = get_middle_z_range(z_stack_num)
-    z = list(range(z_range[0], z_range[1]))
-
-    # NOTE: We take a shortcut for finding nuclear pixels where we do a max_z projection and only look at the 2D
-    # image. This means that we don't know where the nuclear pixels are in the z. Therefore, for right now,
-    # I am going to just find the middle 50% z-stacks of the image and call these valid. So this loop below will
-    # find valid x,y pixels in nuclei, and then pick a random z within the middle 50% of the image.
-
-    rand_spots = []
-    for n in range(num_of_fish_spots):
-        count = 1
-        i = np.random.randint(len(r))
-
-        valid_spot_flag = False
-        while not valid_spot_flag:
-            if all([0 < r[i] - input_params.box_edge_xy < data.fish_image.shape[1],
-                    0 < r[i] + input_params.box_edge_xy < data.fish_image.shape[1], # make sure we are in bounds of image
-                    0 < c[i] - input_params.box_edge_xy < data.fish_image.shape[2],
-                    0 < c[i] + input_params.box_edge_xy < data.fish_image.shape[2], # make sure we are in bounds of image
-                    data.nuclear_mask[r[i] - rand_box_r, c[i] - rand_box_c],  # make sure we are still in nucleus with box
-                    data.nuclear_mask[r[i] + rand_box_r, c[i] + rand_box_c]]):
-
-                zi = np.random.randint(len(z))
-
-                rand_r = r[i]
-                rand_c = c[i]
-                rand_z = z[zi]
-
-                rand_spots.append([slice(rand_z - rand_box_z, rand_z + rand_box_z),
-                                   slice(rand_r - rand_box_r, rand_r + rand_box_r),
-                                   slice(rand_c - rand_box_c, rand_c + rand_box_c)])
-
-                valid_spot_flag = True
-
-            else:
-                i = np.random.randint(len(r))  # choose another spot if the previous one failed
-                count += 1
-        # @Debug
-        # print("Number of random points selected before finding a valid one: ", count)
-        # print()
-
-    # measure IF channels
     random_replicate_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+        columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c',
+                 'center_z'])
 
-    for idx, image in enumerate(data.protein_images):
-        mean_storage = np.zeros(shape=(len(rand_spots), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
+    if num_of_fish_spots > 0:
+        # @Improvement  Write a function to filter nuclei based on ones that have FISH spots. Then maybe choose like 5-10 random spots.
+        # pick random x, y, and z integers to make a random box within image.
+        # choose low and high thresholds to make sure boxes don't go over edges of image
 
-        for s, spot in enumerate(rand_spots):
-            spot_center_z = int(math.floor((spot[0].start + spot[0].stop) / 2))
-            spot_center_r = int(math.floor((spot[1].start + spot[1].stop) / 2))
-            spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
+        mean_fish_length_z, mean_fish_length_r, mean_fish_length_c = find_average_fish_spot_parameter(data.fish_spots)
 
-            x_start = int(spot_center_r - input_params.box_edge_xy/2)
-            x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
+        rand_box_z = math.floor(mean_fish_length_z/2)
+        rand_box_r = math.floor(mean_fish_length_r/2)
+        rand_box_c = math.floor(mean_fish_length_c/2)
 
-            y_start = int(spot_center_c - input_params.box_edge_xy/2)
-            y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
-
-            z_start = int(spot[0].start)
-            z_stop = int(spot[0].stop)
-
-            rand_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
-            mean_intensity = np.mean(rand_spot)
-            max_intensity = np.max(rand_spot)
-
-
-            mean_storage[s, :, :] = np.mean(rand_spot, axis=0)
+        #  handle cases where the mean_fish_length is bigger than the bounding box we want to use
+        if rand_box_z > input_params.box_edge_xy/2:
+            rand_box_z = input_params.box_edge_xy/2
+        if rand_box_r > input_params.box_edge_xy/2:
+            rand_box_r = input_params.box_edge_xy/2
+        if rand_box_c > input_params.box_edge_xy/2:
+            rand_box_c = input_params.box_edge_xy/2
 
 
+        r, c = np.where(data.nuclear_mask)  # limit x,y choice to nuclear pixels
+        z_stack_num = data.fish_image.shape[0]  # limit z choice to z stack number
+        z_range = get_middle_z_range(z_stack_num)
+        z = list(range(z_range[0], z_range[1]))
+
+        # NOTE: We take a shortcut for finding nuclear pixels where we do a max_z projection and only look at the 2D
+        # image. This means that we don't know where the nuclear pixels are in the z. Therefore, for right now,
+        # I am going to just find the middle 50% z-stacks of the image and call these valid. So this loop below will
+        # find valid x,y pixels in nuclei, and then pick a random z within the middle 50% of the image.
+
+        rand_spots = []
+        for n in range(num_of_fish_spots):
+            count = 1
+            i = np.random.randint(len(r))
+
+            valid_spot_flag = False
+            while not valid_spot_flag:
+                if all([0 < r[i] - input_params.box_edge_xy/2 < data.fish_image.shape[1]-1,
+                        0 < r[i] + input_params.box_edge_xy/2 < data.fish_image.shape[1]-1, # make sure we are in bounds of image
+                        0 < c[i] - input_params.box_edge_xy/2 < data.fish_image.shape[2]-1,
+                        0 < c[i] + input_params.box_edge_xy/2 < data.fish_image.shape[2]-1, # make sure we are in bounds of image
+                        data.nuclear_mask[r[i] - rand_box_r, c[i] - rand_box_c],  # make sure we are still in nucleus with box
+                        data.nuclear_mask[r[i] + rand_box_r, c[i] + rand_box_c]]):
+
+                    zi = np.random.randint(len(z))
+
+                    rand_r = r[i]
+                    rand_c = c[i]
+                    rand_z = z[zi]
+
+                    rand_spots.append([slice(rand_z - rand_box_z, rand_z + rand_box_z),
+                                       slice(rand_r - rand_box_r, rand_r + rand_box_r),
+                                       slice(rand_c - rand_box_c, rand_c + rand_box_c)])
+
+                    valid_spot_flag = True
+
+                else:
+                    i = np.random.randint(len(r))  # choose another spot if the previous one failed
+                    count += 1
+            # @Debug
+            # print("Number of random points selected before finding a valid one: ", count)
+            # print()
+
+        # measure IF channels
+
+        for idx, image in enumerate(data.protein_images):
+            mean_storage = np.zeros(shape=(len(rand_spots), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
+
+            for s, spot in enumerate(rand_spots):
+                spot_center_z = int(math.floor((spot[0].start + spot[0].stop) / 2))
+                spot_center_r = int(math.floor((spot[1].start + spot[1].stop) / 2))
+                spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
+
+                x_start = int(spot_center_r - input_params.box_edge_xy/2)
+                x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
+
+                y_start = int(spot_center_c - input_params.box_edge_xy/2)
+                y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
+
+                z_start = int(spot[0].start)
+                z_stop = int(spot[0].stop)
+
+                rand_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
+                mean_intensity = np.mean(rand_spot)
+                max_intensity = np.max(rand_spot)
 
 
-            random_replicate_output = random_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
-                                                                              'IF_channel': int(
-                                                                                  data.protein_channel_names[idx]),
-                                                                              'mean_intensity': mean_intensity,
-                                                                              'max_intensity' : max_intensity,
-                                                                              'center_r': spot_center_r,
-                                                                              'center_c': spot_center_c,
-                                                                              'center_z': spot_center_z},
-                                                                              ignore_index=True)
-        random_mean_storage.append(mean_storage)
+                mean_storage[s, :, :] = np.mean(rand_spot, axis=0)
 
-    data.rand_spots = rand_spots
 
-    # @Debug
-    # test = np.full(shape=data.nuclear_mask.shape, fill_value=False, dtype=bool)
-    # for region in rand_spots:
-    #     test[region[1], region[2]] = True
-    #
-    # test = test*1.0
-    #
-    # fig, ax = plt.subplots(1,2)
-    #
-    # ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
-    # ax[1].imshow(test, cmap='gray')
-    #
-    # plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
+
+
+                random_replicate_output = random_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                                  'IF_channel': int(
+                                                                                      data.protein_channel_names[idx]),
+                                                                                  'mean_intensity': mean_intensity,
+                                                                                  'max_intensity' : max_intensity,
+                                                                                  'center_r': spot_center_r,
+                                                                                  'center_c': spot_center_c,
+                                                                                  'center_z': spot_center_z},
+                                                                                  ignore_index=True)
+            random_mean_storage.append(mean_storage)
+
+        data.rand_spots = rand_spots
+
+        # @Debug
+        # test = np.full(shape=data.nuclear_mask.shape, fill_value=False, dtype=bool)
+        # for region in rand_spots:
+        #     test[region[1], region[2]] = True
+        #
+        # test = test*1.0
+        #
+        # fig, ax = plt.subplots(1,2)
+        #
+        # ax[0].imshow(max_project(data.nucleus_image), cmap='gray')
+        # ax[1].imshow(test, cmap='gray')
+        #
+        # plt.savefig(os.path.join(input_params.parent_dir, data.sample_name + "_test_random_spot.png"), dpi=300)
 
     return random_replicate_output, random_mean_storage, data
 
@@ -465,35 +478,81 @@ def filter_fish_spots(fish_regions, fish_image, fish_mask, nuclear_mask, nuclear
     return fish_regions, fish_mask, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot
 
 
-def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params, experiment_dir):
-    # mean_protein and random_mean will be lists with length equal to the number of IF channels. Each element of the
-    # list is a 3D array where the first axis is the number of fish spots, and the second two axes are the x and y arrays
+def analyze_sample(mean_fish_collection, mean_protein_collection, mean_random_collection, data, input_params, experiment_dir):
+    # mean_protein_collection and mean_random_collection are lists of stacked fish spots from each replicate. In this case,
+    # if there are mutiple IF channels, then the channels alternate. So the initial shape[0] is the number of replicates * 2.
 
-    # mean_fish will be just a 3D array where the first axis is the number of fish spots, and the second two axes
-    # are the x and y arrays
-
-    num_of_total_fish_spots = mean_fish_collection.shape[0]
+    # mean_fish_collection is a list of stacked fish spots from each replicate. So the initial shape[0] is the number
+    # of replicates, and then we can tally the total number of spots with a for loop
 
     if len(mean_fish_collection) > 1:
-        projected_fish = np.mean(mean_fish_collection, axis=0)
-    else:
-        projected_fish = mean_fish_collection[0]
+        num_of_replicates = len(mean_fish_collection)
 
-    projected_protein = []
-    for p in mean_protein_collection:
-        projected_protein.append(np.mean(p, axis=0))
+        replicate_projection = []
+        total_fish_spots = 0
+        for replicate in mean_fish_collection:
+            total_fish_spots = total_fish_spots + replicate.shape[0]
+            replicate_projection.append(np.mean(replicate, axis=0))
 
-    projected_random = []
-    for r in random_mean_collection:
-        projected_random.append(np.mean(r, axis=0))
+        r_size = replicate_projection[0].shape[0]
+        c_size = replicate_projection[0].shape[0]
+        # this will make a projection over all spots over all replicates
+        projected_fish = np.reshape(replicate_projection, newshape=(num_of_replicates, r_size, c_size))
+        projected_fish = np.mean(projected_fish, axis=0)
 
-    # make a graph for each channel (and include FISH in both)
-    for idx, val in enumerate(mean_protein_collection):
-        grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx],
-                                     experiment_dir, data.protein_channel_names[idx], data, input_params, num_of_total_fish_spots)
+        if not input_params.multiple_IF_flag:
 
-        grapher.make_3D_surface_plot(projected_fish, projected_protein[idx], projected_random[idx],
-                                     experiment_dir, data.protein_channel_names[idx], data, input_params, num_of_total_fish_spots)
+            protein_replicate_projection = []
+            for replicate in mean_protein_collection:
+                protein_replicate_projection.append(np.mean(replicate, axis=0))
+
+            projected_protein = np.reshape(protein_replicate_projection, newshape=(num_of_replicates, r_size, c_size))
+            projected_protein = np.mean(projected_protein, axis=0)
+
+            random_replicate_projection = []
+            for replicate in mean_random_collection:
+                random_replicate_projection.append(np.mean(replicate, axis=0))
+
+            projected_random = np.reshape(random_replicate_projection, newshape=(num_of_replicates, r_size, c_size))
+            projected_random = np.mean(projected_random, axis=0)
+
+            # make a graph for the channel
+            grapher.make_2D_contour_plot(projected_fish, projected_protein, projected_random,
+                                         experiment_dir, data.protein_channel_names[0], data, input_params, total_fish_spots)
+
+            grapher.make_3D_surface_plot(projected_fish, projected_protein, projected_random,
+                                         experiment_dir, data.protein_channel_names[0], data, input_params, total_fish_spots)
+
+        else:
+            mean_protein_collection_a = mean_protein_collection[::2]
+            mean_protein_collection_b = mean_protein_collection[1::2]
+            mean_protein_collection = [mean_protein_collection_a, mean_protein_collection_b]
+
+            mean_random_collection_a = mean_random_collection[::2]
+            mean_random_collection_b = mean_random_collection[1::2]
+            mean_random_collection = [mean_random_collection_a, mean_random_collection_b]
+
+            for idx, collection in enumerate(mean_protein_collection):
+                protein_replicate_projection = []
+                for replicate in collection:
+                    protein_replicate_projection.append(np.mean(replicate, axis=0))
+
+                projected_protein = np.reshape(protein_replicate_projection, newshape=(num_of_replicates, r_size, c_size))
+                projected_protein = np.mean(projected_protein, axis=0)
+
+                random_replicate_projection = []
+                for replicate in mean_random_collection[idx]:
+                    random_replicate_projection.append(np.mean(replicate, axis=0))
+
+                projected_random = np.reshape(random_replicate_projection, newshape=(num_of_replicates, r_size, c_size))
+                projected_random = np.mean(projected_random, axis=0)
+
+                # make a graph for the channel
+                grapher.make_2D_contour_plot(projected_fish, projected_protein, projected_random,
+                                             experiment_dir, data.protein_channel_names[idx], data, input_params, total_fish_spots)
+
+                grapher.make_3D_surface_plot(projected_fish, projected_protein, projected_random,
+                                             experiment_dir, data.protein_channel_names[idx], data, input_params, total_fish_spots)
 
 
 def max_project(image):
@@ -626,3 +685,21 @@ def get_spot_center(spot):
     spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
 
     return spot_center_z, spot_center_r, spot_center_c
+
+def write_output_params(input_args):
+
+    # write parameters that were used for this analysis
+    output_params = {'parent_dir': input_args.parent_dir,
+                     'output_path' : input_args.output_path,
+                     'fish_channel' : input_args.fish_channel,
+                     'time_of_analysis': datetime.now(),
+                     'tm': input_args.tm,
+                     'min_a': input_args.min_a,
+                     'max_a': input_args.max_a,
+                     'c': input_args.c,
+                     'b': input_args.b,
+                     'auto_call_flag' : input_args.autocall_flag
+                     }
+
+    with open(os.path.join(input_args.output_path, 'output_analysis_parameters.txt'), 'w') as file:
+        file.write(json.dumps(output_params, default=str))
