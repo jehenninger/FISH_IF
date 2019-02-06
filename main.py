@@ -85,20 +85,21 @@ for folder in dir_list:  # folder is a separate experiment
 
                 data = methods.load_images(replicate_files, input_params, folder)
 
-                temp_individual_replicate_output, temp_individual_fish_output, mean_protein_storage, mean_fish_storage, data =  methods.analyze_replicate(data, input_params)
+                temp_individual_replicate_output, temp_individual_fish_output, mean_protein_collection, mean_fish_storage, data =  methods.analyze_replicate(data, input_params, mean_protein_collection)
 
-                mean_fish_collection = mean_fish_storage
+                if not temp_individual_replicate_output.empty:
+                    mean_fish_collection.append(mean_fish_storage)
 
-                individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
-                individual_fish_output = individual_fish_output.append(temp_individual_fish_output, ignore_index=True)
+                    individual_replicate_output = individual_replicate_output.append(temp_individual_replicate_output, ignore_index=True)
+                    individual_fish_output = individual_fish_output.append(temp_individual_fish_output, ignore_index=True)
 
-                temp_random_replicate_output, random_mean_storage, data = methods.generate_random_data(data, input_params)
+                    temp_random_replicate_output, random_mean_collection, data = methods.generate_random_data(data, input_params, random_mean_collection)
 
 
-                random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
+                    random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
 
-                data.output_directories = output_dirs
-                grapher.make_image_output(data, input_params)
+                    data.output_directories = output_dirs
+                    grapher.make_image_output(data, input_params)
 
             individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             individual_fish_output = individual_fish_output[
@@ -111,7 +112,7 @@ for folder in dir_list:  # folder is a separate experiment
                 individual_fish_output.to_excel(fish_writer, sheet_name=folder[0:15], index=False)
                 random_replicate_output.to_excel(random_writer, sheet_name=folder[0:15], index=False)
 
-            methods.analyze_sample(mean_fish_storage, mean_protein_storage, random_mean_storage, data, input_params, folder)
+            methods.analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_collection, data, input_params, folder)
 
 
 replicate_writer = methods.adjust_excel_column_width(replicate_writer, individual_replicate_output)

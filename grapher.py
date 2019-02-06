@@ -12,7 +12,7 @@ from skimage import color, exposure
 
 from mpl_toolkits.mplot3d import Axes3D
 
-def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data, input_params):
+def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data, input_params, num_of_fish_spots):
     master_font_size = 8
     colormap_fraction = 0.05
     colormap_pad = 0.08
@@ -43,7 +43,7 @@ def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data,
     fish_max = np.max(fish)
 
     fish_contour = ax[0].contourf(fish, 15, cmap=fish_cmap, vmin=fish_min, vmax=fish_max)
-    ax[0].set_title('FISH (n = ' + str(len(data.fish_spots)) + ')', {'fontsize': master_font_size})
+    ax[0].set_title('FISH (n = ' + str(num_of_fish_spots) + ')', {'fontsize': master_font_size})
     ax[0].set_xlabel('µm', {'fontsize': master_font_size})
     ax[0].set_ylabel('µm', {'fontsize': master_font_size})
 
@@ -112,7 +112,7 @@ def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data,
     plt.close()
 
 
-def make_3D_surface_plot(fish, protein, random, sample_name, protein_name, data, input_params):
+def make_3D_surface_plot(fish, protein, random, sample_name, protein_name, data, input_params, num_of_fish_spots):
     master_font_size = 8
     colormap_fraction = 0.05
     colormap_pad = 0.08
@@ -148,7 +148,7 @@ def make_3D_surface_plot(fish, protein, random, sample_name, protein_name, data,
     X, Y = np.meshgrid(x, y)
 
     fish_surface = ax[0].plot_surface(X, Y, fish, cmap=fish_cmap, vmin=fish_min, vmax=fish_max, linewidth=0)
-    ax[0].set_title('FISH (n = ' + str(len(data.fish_spots)) + ')', {'fontsize': master_font_size})
+    ax[0].set_title('FISH (n = ' + str(num_of_fish_spots) + ')', {'fontsize': master_font_size})
 
     # fish_cbar = plt.colorbar(fish_surface, ax=ax[0], fraction=colormap_fraction, pad=colormap_pad,
     #                          aspect=colorbar_aspect, shrink=0.5)

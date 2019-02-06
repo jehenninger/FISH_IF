@@ -39,7 +39,7 @@ def parse_arguments(parser):
 def load_images(replicate_files, input_params, parent_dir):
     data = SimpleNamespace()  # this is the session data object that will be passed to functions
 
-    if (len(replicate_files) - 2) > 1:  # we subtract 2 here to account for the required DAPI and FISH channels
+    if (len(replicate_files) - 3) > 1:  # we subtract 3 here to account for the required DAPI and FISH channels and the .nd file
         input_params.multiple_IF_flag = True
 
     # get replicate sample name
@@ -94,7 +94,7 @@ def load_images(replicate_files, input_params, parent_dir):
     return data
 
 
-def analyze_replicate(data, input_params):
+def analyze_replicate(data, input_params, mean_protein_storage):
 
     # get nuclear mask
     nuclear_regions, nuclear_mask, nuclear_binary_labeled = find_nucleus(data.nucleus_image, input_params)
@@ -108,89 +108,93 @@ def analyze_replicate(data, input_params):
                                                                       fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
     # fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
 
+    if len(fish_spots_filt) > 0:
 
-    # measure IF channels
-    individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+        # measure IF channels
+        individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
-    mean_protein_storage = []
-    for idx, image in enumerate(data.protein_images):
-        mean_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
+        for idx, image in enumerate(data.protein_images):
+            mean_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
 
+            for s, spot in enumerate(fish_spots_filt):
+
+                x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
+                x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
+
+                y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
+                y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+
+                z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
+                z_stop  = int(spot[0].stop)
+
+                fish_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
+                mean_intensity = np.mean(fish_spot)
+                max_intensity = np.max(fish_spot)
+
+
+                mean_storage[s, :, :] = np.mean(fish_spot, axis=0)
+
+
+
+
+                individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                                  'IF_channel' : int(data.protein_channel_names[idx]),
+                                                                                  'mean_intensity' : mean_intensity,
+                                                                                  'max_intensity' : max_intensity,
+                                                                                  'center_r' : fish_centers[s][1],
+                                                                                  'center_c' : fish_centers[s][2],
+                                                                                  'center_z': fish_centers[s][0],
+                                                                                  },
+                                                                                 ignore_index=True)
+            mean_protein_storage.append(mean_storage)
+
+        # measure FISH channel
+        individual_fish_output = pd.DataFrame(
+            columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
+
+        mean_fish_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
         for s, spot in enumerate(fish_spots_filt):
 
             x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-            x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
+            x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
 
             y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-            y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+            y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
 
             z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
-            z_stop  = int(spot[0].stop)
+            z_stop = int(spot[0].stop)
 
-            fish_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
+            fish_spot = data.fish_image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
+
             mean_intensity = np.mean(fish_spot)
             max_intensity = np.max(fish_spot)
 
+            mean_fish_storage[s, :, :] = np.mean(fish_spot, axis=0)
 
-            mean_storage[s, :, :] = np.mean(fish_spot, axis=0)
-
-
-
-
-            individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
-                                                                              'IF_channel' : int(data.protein_channel_names[idx]),
-                                                                              'mean_intensity' : mean_intensity,
-                                                                              'max_intensity' : max_intensity,
-                                                                              'center_r' : fish_centers[s][1],
-                                                                              'center_c' : fish_centers[s][2],
-                                                                              'center_z': fish_centers[s][0],
-                                                                              },
+            individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                              'mean_intensity': mean_intensity,
+                                                                              'max_intensity': max_intensity,
+                                                                              'center_r': fish_centers[s][1],
+                                                                              'center_c': fish_centers[s][2],
+                                                                              'center_z': fish_centers[s][0]},
                                                                              ignore_index=True)
-        mean_protein_storage.append(mean_storage)
 
-    # measure FISH channel
-    individual_fish_output = pd.DataFrame(
-        columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
-
-    mean_fish_storage = np.zeros(shape=(len(fish_spots_filt), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
-    for s, spot in enumerate(fish_spots_filt):
-
-        x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-        x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
-
-        y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-        y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
-
-        z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
-        z_stop = int(spot[0].stop)
-
-        fish_spot = data.fish_image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
-
-        mean_intensity = np.mean(fish_spot)
-        max_intensity = np.max(fish_spot)
-
-        mean_fish_storage[s, :, :] = np.mean(fish_spot, axis=0)
-
-        individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
-                                                                          'mean_intensity': mean_intensity,
-                                                                          'max_intensity': max_intensity,
-                                                                          'center_r': fish_centers[s][1],
-                                                                          'center_c': fish_centers[s][2],
-                                                                          'center_z': fish_centers[s][0]},
-                                                                         ignore_index=True)
-
-    data.nuclear_regions = nuclear_regions
-    data.nuclear_mask = nuclear_mask
-    data.nuclear_binary_labeled = nuclear_binary_labeled
-    data.fish_spots = fish_spots_filt
-    data.fish_mask = fish_mask_filt
-    data.fish_centers = fish_centers
-
+        data.nuclear_regions = nuclear_regions
+        data.nuclear_mask = nuclear_mask
+        data.nuclear_binary_labeled = nuclear_binary_labeled
+        data.fish_spots = fish_spots_filt
+        data.fish_mask = fish_mask_filt
+        data.fish_centers = fish_centers
+    else:
+        individual_fish_output = False
+        individual_replicate_output = pd.DataFrame()
+        mean_protein_storage = False
+        mean_fish_storage = False
 
     return individual_replicate_output, individual_fish_output, mean_protein_storage, mean_fish_storage, data
 
 
-def generate_random_data(data, input_params):
+def generate_random_data(data, input_params, random_mean_storage):
     # maybe for every FISH spot, we select one random spot
     num_of_fish_spots = len(data.fish_spots)
 
@@ -251,7 +255,6 @@ def generate_random_data(data, input_params):
     random_replicate_output = pd.DataFrame(
         columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
-    random_mean_storage = []
     for idx, image in enumerate(data.protein_images):
         mean_storage = np.zeros(shape=(len(rand_spots), int(input_params.box_edge_xy), int(input_params.box_edge_xy)))
 
@@ -469,6 +472,8 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
     # mean_fish will be just a 3D array where the first axis is the number of fish spots, and the second two axes
     # are the x and y arrays
 
+    num_of_total_fish_spots = mean_fish_collection.shape[0]
+
     if len(mean_fish_collection) > 1:
         projected_fish = np.mean(mean_fish_collection, axis=0)
     else:
@@ -485,10 +490,10 @@ def analyze_sample(mean_fish_collection, mean_protein_collection, random_mean_co
     # make a graph for each channel (and include FISH in both)
     for idx, val in enumerate(mean_protein_collection):
         grapher.make_2D_contour_plot(projected_fish, projected_protein[idx], projected_random[idx],
-                                     experiment_dir, data.protein_channel_names[idx], data, input_params)
+                                     experiment_dir, data.protein_channel_names[idx], data, input_params, num_of_total_fish_spots)
 
         grapher.make_3D_surface_plot(projected_fish, projected_protein[idx], projected_random[idx],
-                                     experiment_dir, data.protein_channel_names[idx], data, input_params)
+                                     experiment_dir, data.protein_channel_names[idx], data, input_params, num_of_total_fish_spots)
 
 
 def max_project(image):

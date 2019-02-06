@@ -27,3 +27,9 @@ how we call nuclear pixels
 
 @Todo Handle cases where the FISH spot is near the edges of the image. This will probably throw errors currently.
 @Todo handle cases where user puts the files in wrong (like if they forgot to put experiments in unique folders)
+@Todo There is a bug in random generator where sometimes the average box length is longer than the artificial box
+@Todo BUG when there are no FISH spots found. Need to handle these cases
+@Todo Add output_parameters.txt json file to store the latest output parameters used
+
+@TODO Need to figure out the mean_storage problem and how it goes to analyze_sample. Especially with multiple channels.
+Maybe just need to do "protein" and "protein_b" if the multi flag is hit?
