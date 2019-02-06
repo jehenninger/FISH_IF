@@ -43,6 +43,9 @@ if not os.path.isdir(input_params.parent_dir):
     print('Error: Could not read or find parent directory')
     sys.exit(0)
 
+print('Started at: ', datetime.now())
+print()
+
 # make output directories
 output_dirs = methods.make_output_directories(input_params)
 
@@ -94,17 +97,20 @@ for folder in dir_list:  # folder is a separate experiment
 
                 random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
 
+                data.output_directories = output_dirs
+                grapher.make_image_output(data, input_params)
+
             individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             individual_fish_output = individual_fish_output[
                 ['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             random_replicate_output = random_replicate_output[
                 ['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
 
-            individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
-            individual_fish_output.to_excel(fish_writer, sheet_name=folder[0:15], index=False)
-            random_replicate_output.to_excel(random_writer, sheet_name=folder[0:15], index=False)
+            if len(individual_replicate_output) > 0:
+                individual_replicate_output.to_excel(replicate_writer, sheet_name=folder[0:15], index=False)
+                individual_fish_output.to_excel(fish_writer, sheet_name=folder[0:15], index=False)
+                random_replicate_output.to_excel(random_writer, sheet_name=folder[0:15], index=False)
 
-            data.output_directories = output_dirs
             methods.analyze_sample(mean_fish_storage, mean_protein_storage, random_mean_storage, data, input_params, folder)
 
 
@@ -114,3 +120,7 @@ fish_writer = methods.adjust_excel_column_width(fish_writer, individual_fish_out
 replicate_writer.save()
 fish_writer.save()
 random_writer.save()
+
+print("Finished at: ", datetime.now())
+print()
+print("------------------------ Completed -----------------------")

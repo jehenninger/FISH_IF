@@ -378,8 +378,6 @@ def find_fish_spot(image, input_params):
     # simple thresholding
     mean_intensity = np.mean(image[middle_z, index, index])
     std_intensity = np.std(image[middle_z, index, index])
-    print('Mean intensity: ', mean_intensity)
-    print('Std intensity: ', std_intensity)
 
     # image = img_as_float(image)
     threshold = mean_intensity + (std_intensity * threshold_multiplier)
@@ -616,3 +614,10 @@ def hex_to_rgb(hex_string):
     rgb = [r/255 for r in rgb]
 
     return rgb
+
+def get_spot_center(spot):
+    spot_center_z = int(math.floor((spot[0].start + spot[0].stop) / 2))
+    spot_center_r = int(math.floor((spot[1].start + spot[1].stop) / 2))
+    spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
+
+    return spot_center_z, spot_center_r, spot_center_c
