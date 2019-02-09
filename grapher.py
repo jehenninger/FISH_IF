@@ -57,9 +57,10 @@ def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data,
     r_min = np.min(random)
 
 
-
+    p_flag = False
     if p_max > r_max:
         protein_max = p_max
+        p_flag = True
     else:
         protein_max = r_max
 
@@ -69,17 +70,29 @@ def make_2D_contour_plot(fish, protein, random, sample_name, protein_name, data,
         protein_min = r_min
 
     protein_contour = ax[1].contourf(protein, 15, cmap=protein_cmap, vmin=protein_min, vmax=protein_max)
+    random_contour = ax[2].contourf(random, 15, cmap=protein_cmap, vmin=protein_min, vmax=protein_max)
+
     ax[1].set_title('channel_' + protein_name + '_IF', {'fontsize': master_font_size})
     ax[1].set_xlabel('µm', {'fontsize': master_font_size})
     ax[1].set_ylabel('µm', {'fontsize': master_font_size})
-    protein_cbar = plt.colorbar(protein_contour, ax=ax[1], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+
+    if p_flag:
+        protein_cbar = plt.colorbar(protein_contour, ax=ax[1], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+    else:
+        protein_cbar = plt.colorbar(random_contour, ax=ax[1], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+
     protein_cbar.ax.tick_params(labelsize=master_font_size)
 
-    random_contour = ax[2].contourf(random, 15, cmap=protein_cmap, vmin=protein_min, vmax=protein_max)
+
     ax[2].set_title('random_IF', {'fontsize': master_font_size})
     ax[2].set_xlabel('µm', {'fontsize': master_font_size})
     ax[2].set_ylabel('µm', {'fontsize': master_font_size})
-    random_cbar = plt.colorbar(protein_contour, ax=ax[2], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+
+    if p_flag:
+        random_cbar = plt.colorbar(protein_contour, ax=ax[2], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+    else:
+        random_cbar = plt.colorbar(random_contour, ax=ax[2], fraction=colormap_fraction, pad=colormap_pad, aspect=colorbar_aspect)
+
     random_cbar.ax.tick_params(labelsize=master_font_size)
 
     for a in ax:

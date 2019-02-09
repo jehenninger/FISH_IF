@@ -65,6 +65,8 @@ for folder in dir_list:  # folder is a separate experiment
     if not folder.startswith('.') and \
             os.path.isdir(os.path.join(input_params.parent_dir, folder)):  # to not include hidden files or folders
 
+
+
             input_params.multiple_IF_flag = False  # this is a flag that we switch if there are more than 1 IF channels to localize
 
             mean_protein_collection = []
@@ -76,10 +78,23 @@ for folder in dir_list:  # folder is a separate experiment
                                and os.path.isfile(os.path.join(input_params.parent_dir, folder,  f))]
             base_name_files.sort(reverse=False)
 
+            if not input_params.autocall_flag:
+                manual_metadata_file = [f for f in file_list if 'manual.xlsx' in f
+                                        and os.path.isfile(os.path.join(input_params.parent_dir, folder, f))]
+                if len(manual_metadata_file) == 1:
+                    manual_metadata_file = manual_metadata_file[0]
+                    manual_metadata = methods.load_manual_metadata(os.path.join(input_params.parent_dir, folder, manual_metadata_file))
+                else:
+                    print('Error: Could not find single manual metadata Excel file')
+                    sys.exit(0)
+            else:
+                manual_metadata = None
+
             individual_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
             random_replicate_output = pd.DataFrame(columns=['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
             individual_fish_output = pd.DataFrame(columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
 
+            input_params.replicate_count_idx = 1
             for file in base_name_files:  # file is the nd file associated with a group of images for a replicate
                 sample_name = file.replace(file_ext, '')
                 replicate_files = [r for r in file_list if sample_name in r
@@ -89,7 +104,7 @@ for folder in dir_list:  # folder is a separate experiment
                 data.output_directories = output_dirs
 
                 temp_individual_replicate_output, temp_individual_fish_output, mean_protein_collection, mean_fish_storage, data\
-                    =  methods.analyze_replicate(data, input_params, mean_protein_collection)
+                    =  methods.analyze_replicate(data, input_params, mean_protein_collection, manual_metadata=manual_metadata)
 
                 if not temp_individual_replicate_output.empty:
                     mean_fish_collection.append(mean_fish_storage)
@@ -103,6 +118,8 @@ for folder in dir_list:  # folder is a separate experiment
                     random_replicate_output = random_replicate_output.append(temp_random_replicate_output, ignore_index=True)
 
                     grapher.make_image_output(data, input_params)
+
+                input_params.replicate_count_idx += 1
 
             individual_replicate_output = individual_replicate_output[['sample', 'spot_id', 'IF_channel', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z']]
             individual_fish_output = individual_fish_output[

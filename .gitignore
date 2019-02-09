@@ -10,3 +10,5 @@
 *.xlsx
 *.eps
 *.pdf
+venv/pip-selfcheck.json
+venv/pip-selfcheck.json

@@ -95,19 +95,29 @@ def load_images(replicate_files, input_params, parent_dir):
     return data
 
 
-def analyze_replicate(data, input_params, mean_protein_storage):
+def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=None):
 
     # get nuclear mask
     nuclear_regions, nuclear_mask, nuclear_binary_labeled = find_nucleus(data.nucleus_image, input_params)
 
-    # get FISH spots
-    fish_spots, fish_mask = find_fish_spot(data.fish_image, input_params)
-    # fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
+    if input_params.autocall_flag:
+        # get FISH spots
+        fish_spots, fish_mask = find_fish_spot(data.fish_image, input_params)
+        # fish_mask_int = fish_mask*1 # because matplotlib doesn't like bools?
 
-    # filter FISH spots by nuclear localization and size
-    fish_spots_filt, fish_mask_filt, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot = filter_fish_spots(fish_spots, data.fish_image,
-                                                                      fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
-    # fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
+        # filter FISH spots by nuclear localization and size
+        fish_spots_filt, fish_mask_filt, fish_spot_total_pixels, fish_centers, nucleus_with_fish_spot = filter_fish_spots(fish_spots, data.fish_image,
+                                                                          fish_mask, nuclear_mask, nuclear_binary_labeled, input_params)
+        # fish_mask_filt_int = fish_mask_filt*1  # because matplotlib doesn't like bools?
+    else:
+        replicate_idx = input_params.replicate_count_idx
+
+        manual_spot_center_r = manual_metadata[manual_metadata['replicate'] == replicate_idx]['y'].copy()  # remember image coords are swapped
+        manual_spot_center_c = manual_metadata[manual_metadata['replicate'] == replicate_idx]['x'].copy()
+
+        fish_spots_filt, fish_mask_filt, fish_centers, nucleus_with_fish_spot =\
+            manual_find_fish_spot(data.fish_image, input_params, manual_spot_center_r, manual_spot_center_c, nuclear_binary_labeled)
+
 
     individual_fish_output = pd.DataFrame(
         columns=['sample', 'spot_id', 'mean_intensity', 'max_intensity', 'center_r', 'center_c', 'center_z'])
@@ -703,3 +713,108 @@ def write_output_params(input_args):
 
     with open(os.path.join(input_args.output_path, 'output_analysis_parameters.txt'), 'w') as file:
         file.write(json.dumps(output_params, default=str))
+
+
+def load_manual_metadata(file_path):
+    manual_metadata = pd.read_excel(file_path, sheet_name=0, header=0)
+
+    return manual_metadata
+
+def manual_find_fish_spot(fish_image, input_params, spot_center_r, spot_center_c, nuclear_binary_labeled):
+    # spot center c and r are pandas series of the coordinates
+
+    w = (input_params.box_edge_xy) / 2  # extra height/width to add to fish center to find the spot
+
+    fish_spots = []
+    fish_centers = []
+    nucleus_with_fish_spot = []
+
+    fish_mask = np.full(shape=fish_image.shape, fill_value=False, dtype=bool)
+    if len(spot_center_r > 0):
+        for spot in range(len(spot_center_c)):
+            r = spot_center_r.iloc[spot]
+            c = spot_center_c.iloc[spot]
+            r_start = int(r - w)
+            r_end   = int(r + w)
+
+            c_start = int(c - w)
+            c_end   = int(c + w)
+
+            spot_z_stack = fish_image[:,
+                           r_start : r_end,
+                           c_start : c_end]
+
+            spot_region = find_manual_fish_spot_in_z_stack(spot_z_stack)
+
+            if spot_region is not None:
+                r_correction = (spot_region[1].stop - spot_region[1].start)/2
+                c_correction = (spot_region[2].stop - spot_region[2].start)/2
+
+                correct_spot_region = (spot_region[0],
+                                       slice(int(r - r_correction), int(r + r_correction)),
+                                       slice(int(c - c_correction), int(c + c_correction))) # this probably adds an extra pixel
+
+                z_center = int(math.floor((spot_region[0].stop - spot_region[0].start)/2))
+
+                fish_spots.append(correct_spot_region)
+                fish_centers.append([z_center, r, c])
+
+                nucleus_with_fish_spot.append(nuclear_binary_labeled[r, c])
+
+                fish_mask[correct_spot_region] = True
+
+
+    return fish_spots, fish_mask, fish_centers, nucleus_with_fish_spot
+
+
+def find_manual_fish_spot_in_z_stack(stack):
+    # # cluster method (doesn't seem to work)
+    # image_1d = stack.reshape((-1, 1))
+    # clusters = KMeans(n_clusters=2, random_state=0).fit_predict(image_1d)
+    # cluster_mean = []
+    # for c in range(2):
+    #     cluster_mean.append(np.mean(image_1d[clusters == c]))
+    # fish_cluster = np.argmax(cluster_mean)
+    # clusters = np.reshape(clusters, newshape=stack.shape)
+    #
+    # spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
+    # spot_mask[clusters == fish_cluster] = True
+
+    # simple threshold (less severe)
+    threshold = np.mean(stack) + (np.std(stack) * 1.5)
+
+    spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
+    spot_mask[np.where(stack > threshold)] = True
+
+    spot_binary = nd.morphology.binary_fill_holes(spot_mask)
+    spot_binary = nd.binary_opening(spot_binary)
+    spot_binary = nd.binary_opening(spot_binary)
+
+    spot_binary_labeled, num_of_regions = nd.label(spot_binary)
+    spot_regions = nd.find_objects(spot_binary_labeled)
+
+    if num_of_regions > 1:
+        volume = []
+        for region in spot_regions:
+            volume.append((region[0].stop - region[0].start) *
+                          (region[1].stop - region[1].start) *
+                          (region[2].stop - region[2].start))
+
+        max_volume_region = np.argmax(volume)
+
+        for idx, region in enumerate(spot_regions):
+            if idx == max_volume_region:
+                region_to_keep = region
+    elif num_of_regions == 1:
+        for region in spot_regions:
+            region_to_keep = region
+    else:
+        region_to_keep = None
+
+    print("Number of regions found in fish spot: ", num_of_regions)
+    print("Region type: ", type(region_to_keep))
+    print()
+
+    return region_to_keep
+
+
