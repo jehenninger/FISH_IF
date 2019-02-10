@@ -140,28 +140,37 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
                 y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
                 y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
 
-                z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
+                z_start = int(spot[0].start) # although we use a box for the xy, for now we will just use the z-slices of the spot
+                if z_start < 0:
+                    z_start = 1
+
                 z_stop  = int(spot[0].stop)
 
+                if z_stop == z_start: # to handle cases where there is a single z-plane. We force it to be 2.
+                    z_stop = z_stop + 1
+                    if z_stop > image.shape[0]:
+                        z_start = z_start - 1
+                        z_stop = z_stop -1
+
                 fish_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
-                mean_intensity = np.mean(fish_spot)
-                max_intensity = np.max(fish_spot)
+
+                if fish_spot.shape[1:3] == (int(input_params.box_edge_xy), int(input_params.box_edge_xy)):  # a bit janky because we need to make sure the fish_spot is not on the edge where we can't get a full box
+                    mean_intensity = np.mean(fish_spot)
+                    max_intensity = np.max(fish_spot)
+                    mean_storage[s, :, :] = np.mean(fish_spot, axis=0)
 
 
-                mean_storage[s, :, :] = np.mean(fish_spot, axis=0)
 
 
-
-
-                individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
-                                                                                  'IF_channel' : int(data.protein_channel_names[idx]),
-                                                                                  'mean_intensity' : mean_intensity,
-                                                                                  'max_intensity' : max_intensity,
-                                                                                  'center_r' : fish_centers[s][1],
-                                                                                  'center_c' : fish_centers[s][2],
-                                                                                  'center_z': fish_centers[s][0],
-                                                                                  },
-                                                                                 ignore_index=True)
+                    individual_replicate_output = individual_replicate_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                                      'IF_channel' : int(data.protein_channel_names[idx]),
+                                                                                      'mean_intensity' : mean_intensity,
+                                                                                      'max_intensity' : max_intensity,
+                                                                                      'center_r' : fish_centers[s][1],
+                                                                                      'center_c' : fish_centers[s][2],
+                                                                                      'center_z': fish_centers[s][0],
+                                                                                      },
+                                                                                     ignore_index=True)
             mean_protein_storage.append(mean_storage)
 
         # measure FISH channel
@@ -177,22 +186,33 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
             y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
 
             z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
+            if z_start < 0:
+                z_start = 1
+
             z_stop = int(spot[0].stop)
+
+            if z_stop == z_start:  # to handle cases where there is a single z-plane. We force it to be 2.
+                z_stop = z_stop + 1
+                if z_stop > spot.shape[0]:
+                    z_start = z_start - 1
+                    z_stop = z_stop - 1
 
             fish_spot = data.fish_image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
 
-            mean_intensity = np.mean(fish_spot)
-            max_intensity = np.max(fish_spot)
+            if fish_spot.shape[1:3] == (int(input_params.box_edge_xy), int(input_params.box_edge_xy)):  # a bit janky because we need to make sure the fish_spot is not on the edge where we can't get a full box
 
-            mean_fish_storage[s, :, :] = np.mean(fish_spot, axis=0)
+                mean_intensity = np.mean(fish_spot)
+                max_intensity = np.max(fish_spot)
 
-            individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
-                                                                              'mean_intensity': mean_intensity,
-                                                                              'max_intensity': max_intensity,
-                                                                              'center_r': fish_centers[s][1],
-                                                                              'center_c': fish_centers[s][2],
-                                                                              'center_z': fish_centers[s][0]},
-                                                                             ignore_index=True)
+                mean_fish_storage[s, :, :] = np.mean(fish_spot, axis=0)
+
+                individual_fish_output = individual_fish_output.append({'sample': data.sample_name, 'spot_id': s,
+                                                                                  'mean_intensity': mean_intensity,
+                                                                                  'max_intensity': max_intensity,
+                                                                                  'center_r': fish_centers[s][1],
+                                                                                  'center_c': fish_centers[s][2],
+                                                                                  'center_z': fish_centers[s][0]},
+                                                                                 ignore_index=True)
 
         data.nuclear_regions = nuclear_regions
         data.nuclear_mask = nuclear_mask
@@ -250,12 +270,14 @@ def generate_random_data(data, input_params, random_mean_storage):
 
             valid_spot_flag = False
             while not valid_spot_flag:
-                if all([0 < r[i] - input_params.box_edge_xy/2 < data.fish_image.shape[1]-1,
-                        0 < r[i] + input_params.box_edge_xy/2 < data.fish_image.shape[1]-1, # make sure we are in bounds of image
-                        0 < c[i] - input_params.box_edge_xy/2 < data.fish_image.shape[2]-1,
-                        0 < c[i] + input_params.box_edge_xy/2 < data.fish_image.shape[2]-1, # make sure we are in bounds of image
-                        data.nuclear_mask[r[i] - rand_box_r, c[i] - rand_box_c],  # make sure we are still in nucleus with box
-                        data.nuclear_mask[r[i] + rand_box_r, c[i] + rand_box_c]]):
+                if 0 < r[i] - input_params.box_edge_xy/2 < data.fish_image.shape[1]-1 and\
+                        0 < r[i] + input_params.box_edge_xy/2 < data.fish_image.shape[1]-1 and\
+                        0 < c[i] - input_params.box_edge_xy/2 < data.fish_image.shape[2]-1 and\
+                        0 < c[i] + input_params.box_edge_xy/2 < data.fish_image.shape[2]-1 and\
+                        0 < r[i] + rand_box_r < data.fish_image.shape[1] - 1 and\
+                        0 < c[i] + rand_box_c < data.fish_image.shape[2] - 1 and\
+                        data.nuclear_mask[r[i] - rand_box_r, c[i] - rand_box_c] and\
+                        data.nuclear_mask[r[i] + rand_box_r, c[i] + rand_box_c]:
 
                     zi = np.random.randint(len(z))
 
@@ -293,7 +315,16 @@ def generate_random_data(data, input_params, random_mean_storage):
                 y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
 
                 z_start = int(spot[0].start)
+                if z_start < 0:
+                    z_start = 0
+
                 z_stop = int(spot[0].stop)
+
+                if z_stop == z_start:  # this is to handle cases where the 'spot' is in only one z plane. We force it to be two.
+                    z_stop = z_stop + 1
+                    if z_stop > image.shape[0]:
+                        z_start = z_start -1
+                        z_stop = z_stop -1
 
                 rand_spot = image[z_start:z_stop, x_start:x_stop, y_start:y_stop]
                 mean_intensity = np.mean(rand_spot)
@@ -723,7 +754,7 @@ def load_manual_metadata(file_path):
 def manual_find_fish_spot(fish_image, input_params, spot_center_r, spot_center_c, nuclear_binary_labeled):
     # spot center c and r are pandas series of the coordinates
 
-    w = (input_params.box_edge_xy) / 2  # extra height/width to add to fish center to find the spot
+    w = ((input_params.box_edge_xy) / 2) / 3  # extra height/width to add to fish center to find the spot
 
     fish_spots = []
     fish_centers = []
@@ -732,8 +763,8 @@ def manual_find_fish_spot(fish_image, input_params, spot_center_r, spot_center_c
     fish_mask = np.full(shape=fish_image.shape, fill_value=False, dtype=bool)
     if len(spot_center_r > 0):
         for spot in range(len(spot_center_c)):
-            r = spot_center_r.iloc[spot]
-            c = spot_center_c.iloc[spot]
+            r = int(spot_center_r.iloc[spot])
+            c = int(spot_center_c.iloc[spot])
             r_start = int(r - w)
             r_end   = int(r + w)
 
@@ -768,23 +799,24 @@ def manual_find_fish_spot(fish_image, input_params, spot_center_r, spot_center_c
 
 
 def find_manual_fish_spot_in_z_stack(stack):
-    # # cluster method (doesn't seem to work)
-    # image_1d = stack.reshape((-1, 1))
-    # clusters = KMeans(n_clusters=2, random_state=0).fit_predict(image_1d)
-    # cluster_mean = []
-    # for c in range(2):
-    #     cluster_mean.append(np.mean(image_1d[clusters == c]))
-    # fish_cluster = np.argmax(cluster_mean)
-    # clusters = np.reshape(clusters, newshape=stack.shape)
-    #
-    # spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
-    # spot_mask[clusters == fish_cluster] = True
-
-    # simple threshold (less severe)
-    threshold = np.mean(stack) + (np.std(stack) * 1.5)
+    # cluster method (doesn't seem to work)
+    image_1d = stack.reshape((-1, 1))
+    clusters = KMeans(n_clusters=2, random_state=0).fit_predict(image_1d)
+    cluster_mean = []
+    for c in range(2):
+        cluster_mean.append(np.mean(image_1d[clusters == c]))
+    fish_cluster = np.argmax(cluster_mean)
+    clusters = np.reshape(clusters, newshape=stack.shape)
 
     spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
-    spot_mask[np.where(stack > threshold)] = True
+    spot_mask[clusters == fish_cluster] = True
+
+
+
+    # # simple threshold (less severe)
+    # threshold = np.mean(stack) + (np.std(stack) * 1.5)
+    # spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
+    # spot_mask[np.where(stack > threshold)] = True
 
     spot_binary = nd.morphology.binary_fill_holes(spot_mask)
     spot_binary = nd.binary_opening(spot_binary)
