@@ -1,0 +1,29 @@
+Updated 190306 by Jon H.
+
+############ REQUIRED ARGUMENTS ###############
+
+parent_dir	:	path to folder that contains subfolders of data. Each folder contains all the replicate .TIFs and .nd files for that sample
+output_path	:	path to folder that designates where to store output. The folder will be made if it does not exist.
+fish_channel	:	Integer number corresponding to the FISH channel (488, 561, or 642)
+
+
+############ OPTIONAL ARGUMENTS ###############
+
+--tm		:	Threshold multiplier to find FISH spots. The threshold is Intensity_Mean + (Intensity_Standard_Deviation + tm). Default is 3.0 for 3 standard deviations 			above the mean.
+
+
+--min_a		:	Minimum number of voxels that must be in the FISH spot (default = 1000, this might be high).
+
+--max_a		:	Maximum number of voxels that must be in the FISH spot (default = 10000)
+
+--c		:	Circularity threshold. Default is 0.7
+
+--b		:	Box edge length around FISH spot. Default is 3 µM
+
+--manual	:	Flag to set if you manually called foci. A file ending with 'manual.xlsx' must be in the folder with the replicate images. The Excel file must have the 			columns 'replicate', 'x', and 'y' (without quotes), where replicate is an integer corresponding to the replicate number (1, 2, 3, etc...), and x and y are 			the x and y coordinates of FISH spots (found by taking a maximum Z projection of the FISH image). These don't have to be exactly in the center. There is an 			example in the ../tools/FISH_IF folder
+
+
+To run:
+
+$ cd /lab/solexa_young/scratch/jon_henninger/tools/FISH_IF
+$ ./main.py <parent_dir> <output_path> <fish_channel> --optional_argument1 input1 --optional_argument2 input2
