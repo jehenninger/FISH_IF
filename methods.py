@@ -135,10 +135,12 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
             for s, spot in enumerate(fish_spots_filt):
 
                 x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-                x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
+                # x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
+                x_stop = int(fish_centers[s][1] + input_params.box_edge_xy / 2)
 
                 y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-                y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+                # y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+                y_stop = int(fish_centers[s][2] + input_params.box_edge_xy / 2)
 
                 z_start = int(spot[0].start) # although we use a box for the xy, for now we will just use the z-slices of the spot
                 if z_start < 0:
@@ -180,10 +182,12 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
         for s, spot in enumerate(fish_spots_filt):
 
             x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-            x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
+            # x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)
+            x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2)
 
             y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-            y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+            # y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
+            y_stop = int(fish_centers[s][2] + input_params.box_edge_xy / 2)
 
             z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
             if z_start < 0:
@@ -309,10 +313,12 @@ def generate_random_data(data, input_params, random_mean_storage):
                 spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
 
                 x_start = int(spot_center_r - input_params.box_edge_xy/2)
-                x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
+                # x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
+                x_stop = int(spot_center_r + input_params.box_edge_xy / 2)
 
                 y_start = int(spot_center_c - input_params.box_edge_xy/2)
-                y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
+                # y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
+                y_stop = int(spot_center_c + input_params.box_edge_xy / 2)
 
                 z_start = int(spot[0].start)
                 if z_start < 0:
@@ -801,51 +807,54 @@ def manual_find_fish_spot(fish_image, input_params, spot_center_r, spot_center_c
 def find_manual_fish_spot_in_z_stack(stack):
     # cluster method (doesn't seem to work)
     image_1d = stack.reshape((-1, 1))
-    clusters = KMeans(n_clusters=2, random_state=0).fit_predict(image_1d)
-    cluster_mean = []
-    for c in range(2):
-        cluster_mean.append(np.mean(image_1d[clusters == c]))
-    fish_cluster = np.argmax(cluster_mean)
-    clusters = np.reshape(clusters, newshape=stack.shape)
+    if image_1d.shape[0] > 0:
+        clusters = KMeans(n_clusters=2, random_state=0).fit_predict(image_1d)
+        cluster_mean = []
+        for c in range(2):
+            cluster_mean.append(np.mean(image_1d[clusters == c]))
+        fish_cluster = np.argmax(cluster_mean)
+        clusters = np.reshape(clusters, newshape=stack.shape)
 
-    spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
-    spot_mask[clusters == fish_cluster] = True
+        spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
+        spot_mask[clusters == fish_cluster] = True
 
 
 
-    # # simple threshold (less severe)
-    # threshold = np.mean(stack) + (np.std(stack) * 1.5)
-    # spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
-    # spot_mask[np.where(stack > threshold)] = True
+        # # simple threshold (less severe)
+        # threshold = np.mean(stack) + (np.std(stack) * 1.5)
+        # spot_mask = np.full(shape=stack.shape, fill_value=False, dtype=bool)
+        # spot_mask[np.where(stack > threshold)] = True
 
-    spot_binary = nd.morphology.binary_fill_holes(spot_mask)
-    spot_binary = nd.binary_opening(spot_binary)
-    spot_binary = nd.binary_opening(spot_binary)
+        spot_binary = nd.morphology.binary_fill_holes(spot_mask)
+        spot_binary = nd.binary_opening(spot_binary)
+        spot_binary = nd.binary_opening(spot_binary)
 
-    spot_binary_labeled, num_of_regions = nd.label(spot_binary)
-    spot_regions = nd.find_objects(spot_binary_labeled)
+        spot_binary_labeled, num_of_regions = nd.label(spot_binary)
+        spot_regions = nd.find_objects(spot_binary_labeled)
 
-    if num_of_regions > 1:
-        volume = []
-        for region in spot_regions:
-            volume.append((region[0].stop - region[0].start) *
-                          (region[1].stop - region[1].start) *
-                          (region[2].stop - region[2].start))
+        if num_of_regions > 1:
+            volume = []
+            for region in spot_regions:
+                volume.append((region[0].stop - region[0].start) *
+                              (region[1].stop - region[1].start) *
+                              (region[2].stop - region[2].start))
 
-        max_volume_region = np.argmax(volume)
+            max_volume_region = np.argmax(volume)
 
-        for idx, region in enumerate(spot_regions):
-            if idx == max_volume_region:
+            for idx, region in enumerate(spot_regions):
+                if idx == max_volume_region:
+                    region_to_keep = region
+        elif num_of_regions == 1:
+            for region in spot_regions:
                 region_to_keep = region
-    elif num_of_regions == 1:
-        for region in spot_regions:
-            region_to_keep = region
+        else:
+            region_to_keep = None
+
+        print("Number of regions found in fish spot: ", num_of_regions)
+        print("Region type: ", type(region_to_keep))
+        print()
     else:
         region_to_keep = None
-
-    print("Number of regions found in fish spot: ", num_of_regions)
-    print("Region type: ", type(region_to_keep))
-    print()
 
     return region_to_keep
 

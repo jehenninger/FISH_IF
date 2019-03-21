@@ -1,4 +1,4 @@
-#!/lab/solexa_young/scratch/jon_henninger/tools/venv/bin/python
+#!/Users/jon/PycharmProjects/FISH_IF/venv/bin/python
 
 import matplotlib
 matplotlib.use('Agg')
@@ -32,6 +32,9 @@ import math
 parser = argparse.ArgumentParser()
 
 input_params = methods.parse_arguments(parser)
+input_params.parent_dir = input_params.parent_dir.replace("Volumes","lab")
+input_params.output_path = input_params.output_path.replace("Volumes","lab")
+
 
 input_params.xy_um_per_px = 0.057
 input_params.z_um_per_px = 0.2
@@ -81,8 +84,9 @@ for folder in dir_list:  # folder is a separate experiment
             base_name_files.sort(reverse=False)
 
             if not input_params.autocall_flag:
-                manual_metadata_file = [f for f in file_list if 'manual.xlsx' in f
+                manual_metadata_file = [f for f in file_list if 'manual.xlsx' in f and '$' not in f
                                         and os.path.isfile(os.path.join(input_params.parent_dir, folder, f))]
+                print(manual_metadata_file)
                 if len(manual_metadata_file) == 1:
                     manual_metadata_file = manual_metadata_file[0]
                     manual_metadata = methods.load_manual_metadata(os.path.join(input_params.parent_dir, folder, manual_metadata_file))
