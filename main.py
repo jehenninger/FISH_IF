@@ -1,4 +1,4 @@
-#!/Users/jon/PycharmProjects/FISH_IF/venv/bin/python
+#!/lab/solexa_young/scratch/jon_henninger/tools/venv/bin/python
 
 import matplotlib
 matplotlib.use('Agg')

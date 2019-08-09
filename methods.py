@@ -24,11 +24,11 @@ def parse_arguments(parser):
     parser.add_argument("fish_channel")
 
     # optional arguments
-    parser.add_argument("--tm", type=float, default=3.0)
-    parser.add_argument("--min_a", type=float, default=1000)  # number of voxels
-    parser.add_argument("--max_a", type=float, default=10000)  # number of voxels
-    parser.add_argument("--c", type=float, default=0.7)  # circularity threshold
-    parser.add_argument("--b", type=float, default=3)  # box edge length for graphing and quantification (in um)
+    parser.add_argument("--tm", type=float, default=3.0, help='Threshold multiplier. Threshold is mean + tm*std of image. Default is 3.')
+    parser.add_argument("--min_a", type=float, default=200, help='Minimum number of voxels in FISH spot. Default 200')  # number of voxels
+    parser.add_argument("--max_a", type=float, default=10000, help='Max number of voxels in FISH spot. Default is 10000')  # number of voxels
+    parser.add_argument("--c", type=float, default=0.7, help='Threshold of circularity of FISH spot on scale 0-1. Default is 0.7')  # circularity threshold
+    parser.add_argument("--b", type=float, default=3, help='Box edge length for graphing and quantification in µm. Default is 3')  # box edge length for graphing and quantification (in um)
 
     parser.add_argument("--manual", dest="autocall_flag", action="store_false", default=True)
 
@@ -135,12 +135,10 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
             for s, spot in enumerate(fish_spots_filt):
 
                 x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-                # x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
-                x_stop = int(fish_centers[s][1] + input_params.box_edge_xy / 2)
+                x_stop  = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for the center point itself
 
                 y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-                # y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
-                y_stop = int(fish_centers[s][2] + input_params.box_edge_xy / 2)
+                y_stop  = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
 
                 z_start = int(spot[0].start) # although we use a box for the xy, for now we will just use the z-slices of the spot
                 if z_start < 0:
@@ -182,12 +180,10 @@ def analyze_replicate(data, input_params, mean_protein_storage, manual_metadata=
         for s, spot in enumerate(fish_spots_filt):
 
             x_start = int(fish_centers[s][1] - input_params.box_edge_xy/2)
-            # x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)
-            x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2)
+            x_stop = int(fish_centers[s][1] + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
 
             y_start = int(fish_centers[s][2] - input_params.box_edge_xy/2)
-            # y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
-            y_stop = int(fish_centers[s][2] + input_params.box_edge_xy / 2)
+            y_stop = int(fish_centers[s][2] + input_params.box_edge_xy/2 - 1)
 
             z_start = int(spot[0].start)  # although we use a box for the xy, for now we will just use the z-slices of the spot
             if z_start < 0:
@@ -313,12 +309,10 @@ def generate_random_data(data, input_params, random_mean_storage):
                 spot_center_c = int(math.floor((spot[2].start + spot[2].stop) / 2))
 
                 x_start = int(spot_center_r - input_params.box_edge_xy/2)
-                # x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
-                x_stop = int(spot_center_r + input_params.box_edge_xy / 2)
+                x_stop  = int(spot_center_r + input_params.box_edge_xy/2 - 1)  # -1 to account for center point itself
 
                 y_start = int(spot_center_c - input_params.box_edge_xy/2)
-                # y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
-                y_stop = int(spot_center_c + input_params.box_edge_xy / 2)
+                y_stop  = int(spot_center_c + input_params.box_edge_xy/2 - 1)
 
                 z_start = int(spot[0].start)
                 if z_start < 0:
